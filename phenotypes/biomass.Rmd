@@ -60,7 +60,6 @@ data %>%
 # Régression par splines
 
 ```{r}
-
 data %>%
   lm(formula=Dry_mass_mg ~ ns(CO2, df=DF)*N)%>%
   summary()
