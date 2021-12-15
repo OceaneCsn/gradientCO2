@@ -1,0 +1,96 @@
+---
+title: "Analyse de Carbone/Azote sous gradient de CO2"
+author: "Océane"
+output: 
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+    df_print: paged
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE )
+library(tidyverse)
+library(splines)
+library(ggpubr)
+library(jsonlite)
+```
+
+
+# Contexte
+
+Tous les échantillons sont bien passés sauf un.
+
+
+# Visualisation
+
+Avant le retrait des outliers : 
+
+```{r, fig.width=10, fig.height=8}
+data <- 
+  read.table("../data/OC_08_N-C.csv", sep=';', h=T, na.strings = "NA") %>%
+  rename(N=X.N, C=X.C, Tube=Nom) %>%
+  mutate(Tube = as.numeric(str_remove(Tube, ',000')),
+         Poids = as.numeric(str_replace(Poids, ',', '.')),
+         N = as.numeric(str_replace(N, ',', '.')),
+         C = as.numeric(str_replace(C, ',', '.'))) %>%
+  inner_join(read.csv("../data/OC_08_annotation.csv", sep=';'), by="Tube") %>%
+  rename(N_nutrition = N.y, N=N.x)
+
+DF=4
+data %>%
+  ggplot(aes(x=CO2, y=N, color=N_nutrition, fill=N_nutrition))+
+  geom_smooth(method = "lm", se = T, size = 1, alpha=0.3,
+              formula = y ~ ns(x, df=DF))+
+  geom_boxplot(aes(group=interaction(CO2, N_nutrition), color=N_nutrition), 
+               alpha=1, width=20, fill="white", outlier.alpha = 0)+
+  geom_dotplot(aes(group=interaction(CO2, N_nutrition)),
+               binaxis='y', stackdir='center', dotsize = 0.35)+ 
+  theme_pubr() + 
+  scale_color_brewer(palette = "Accent") + 
+  scale_fill_brewer(palette = "Accent") + 
+  ylab("N%") +
+  ggtitle("N% of plants under CO2 gradient and 2 types of N nutrition")+
+  xlim(c(390, 910)) +
+  labs(subtitle = "Spline interpolation, N=11 or 12 per CO2*N condition")
+```
+
+Après discussion avec Thibaut, les deux valeurs les plus extrèmes pour le Mix à 775ppm (3.1 et 8.8) sont des problèmes de dosage dans l'appareil (une partie de l'azote du premier a fini dans le deuxième). Il propose de re-doser 132, 141, 142 et 121 :)
+
+```{r, fig.width=10, fig.height=8}
+data  %>%
+  filter(N<8&N>5) %>%
+  ggplot(aes(x=CO2, y=N, color=N_nutrition, fill=N_nutrition))+
+  geom_smooth(method = "lm", se = T, size = 1, alpha=0.3,
+              formula = y ~ ns(x, df=DF))+
+  geom_boxplot(aes(group=interaction(CO2, N_nutrition), color=N_nutrition), 
+               alpha=1, width=20, fill="white", outlier.alpha = 0)+
+  geom_dotplot(aes(group=interaction(CO2, N_nutrition)),
+               binaxis='y', stackdir='center', dotsize = 0.35)+ 
+  theme_pubr() + 
+  scale_color_brewer(palette = "Accent") + 
+  scale_fill_brewer(palette = "Accent") + 
+  ylab("N%") +
+  ggtitle("N% of plants under CO2 gradient and 2 types of N nutrition")+
+  xlim(c(390, 910)) +
+  labs(subtitle = "Spline interpolation, N=11 or 12 per CO2*N condition") 
+```
+
+# Modèle par splines
+
+
+```{r}
+data %>%
+  lm(formula=N ~ ns(CO2, df=DF)*N)%>%
+  summary()
+
+data.frame(ns(data$CO2, df=DF)) %>%
+  mutate(CO2 = data$CO2) %>%
+  gather(key="DF", value = "Value", contains("X")) %>%
+  ggplot(aes(x=CO2, y=Value, color=DF))+
+  geom_point() + geom_smooth() + theme_pubr()
+```
+
