@@ -42,7 +42,7 @@ data <-
   inner_join(read.csv("../data/OC_08_annotation.csv", sep=';'), by="Tube") %>%
   rename(N_nutrition = N.y, N=N.x)
 
-DF=3
+DF=4
 data %>%
   ggplot(aes(x=CO2, y=N, color=N_nutrition, fill=N_nutrition))+
   geom_smooth(method = "lm", se = T, size = 1, alpha=0.3,
@@ -126,19 +126,53 @@ data %>%
 
 data %>%
   lm(formula=N/C ~ ns(CO2, df=DF)*N_nutrition)%>%
-  summary()
+  summary() 
 ```
 
 # N% en fonction de C%
 
 
-```{r}
+```{r, fig.width=10, fig.height=8}
 data %>%
-  ggplot(aes(x=C, y=N, color=CO2, shape=N_nutrition)) + 
-  geom_point()
-
-data %>%
-  ggplot(aes(x=C, y=N, color=N_nutrition)) + 
-  geom_point()
+  ggplot(aes(x=C, y=N, label=CO2)) + 
+  geom_point(aes(size=CO2, color=N_nutrition)) + 
+  scale_color_brewer(palette = "Accent")+
+  geom_text(size=2)
 ```
+
+# N% en fonction de la biomasse
+
+```{r, fig.width=10, fig.height=8}
+read.csv("../data/OC_08_dry_biomass.csv", sep=';') %>%
+  filter(!str_detect(TubeVide, "Date")) %>%
+  mutate(Dry_mass_mg = (parse_number(Tube_masse_seche)- parse_number(TubeVide))*1000) %>%
+  select(Tube, Dry_mass_mg) %>% 
+  inner_join(data, by="Tube") %>%
+  select(-c(Tissue, RNA)) %>%
+  filter(Dry_mass_mg >0) %>%
+  ggplot(aes(x=Dry_mass_mg, y = N, label=CO2)) +
+  geom_point(aes(size=CO2, color=N_nutrition))+
+  stat_cor() + geom_smooth(method = 'lm', color='black', alpha=0.1) + 
+  scale_color_brewer(palette = "Accent")+
+  geom_text(size=2)
+```
+
+# C% en fonction de la biomasse
+
+```{r, fig.width=10, fig.height=8}
+
+read.csv("../data/OC_08_dry_biomass.csv", sep=';') %>%
+  filter(!str_detect(TubeVide, "Date")) %>%
+  mutate(Dry_mass_mg = (parse_number(Tube_masse_seche)- parse_number(TubeVide))*1000) %>%
+  select(Tube, Dry_mass_mg) %>% 
+  inner_join(data, by="Tube") %>%
+  select(-c(Tissue, RNA)) %>%
+  filter(Dry_mass_mg >0) %>%
+  ggplot(aes(x=Dry_mass_mg, y = C, label=CO2)) +
+  geom_point(aes(size=CO2, color=N_nutrition))+
+  stat_cor() + geom_smooth(method = 'lm', color='black', alpha=0.1) + 
+  scale_color_brewer(palette = "Accent")+
+  geom_text(size=2)
+```
+
 

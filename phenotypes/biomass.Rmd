@@ -30,7 +30,7 @@ library(jsonlite)
 data <- read.csv("../data/OC_08_dry_biomass.csv", sep=';')
 annot <- read.csv("../data/OC_08_annotation.csv", sep=';')
 
-DF=2
+DF=4
 
 data <- data %>%
   filter(!str_detect(TubeVide, "Date")) %>%
