@@ -129,6 +129,84 @@ data %>%
   summary() 
 ```
 
+
+# N% en fonction de la biomasse
+
+Si on confond les niveaux de CO2, on a une relation entre biomasse et N%.
+Si on prend en compte le CO2, alors la biomasse n'explique plus le N%.
+
+
+```{r, fig.width=10, fig.height=8}
+
+merged_data <- read.csv("../data/OC_08_dry_biomass.csv", sep=';') %>%
+  filter(!str_detect(TubeVide, "Date")) %>%
+  mutate(Dry_mass_mg = (parse_number(Tube_masse_seche)- parse_number(TubeVide))*1000) %>%
+  rename(Tube=ï..Tube) %>%
+  select(Tube, Dry_mass_mg) %>% 
+  inner_join(data, by="Tube") %>%
+  select(-c(Tissue, RNA)) %>%
+  filter(Dry_mass_mg >0)
+
+
+merged_data %>%
+  ggplot(aes(x=Dry_mass_mg, y = N, label=CO2)) +
+  geom_point(aes(size=CO2, color=N_nutrition))+
+  stat_cor() + geom_smooth(method = 'lm', color='black', alpha=0.1) + 
+  scale_color_brewer(palette = "Accent")+
+  geom_text(size=2)
+
+merged_data %>%
+  ggplot(aes(x=Dry_mass_mg, y = N, label=CO2, color=N_nutrition)) +
+  geom_point(aes(size=CO2))+
+  stat_cor() + geom_smooth(method = 'lm', alpha=0.1) + 
+  scale_color_brewer(palette = "Accent")+
+  geom_text(size=2, color="black")
+
+merged_data %>%
+  ggplot(aes(x=Dry_mass_mg, y = N, label=CO2, color=interaction(N_nutrition, CO2))) +
+  geom_point(aes(size=CO2))+
+  stat_cor() + geom_smooth(method = 'lm', alpha=0.1) + 
+  scale_color_brewer(palette = "Accent")+
+  geom_text(size=2, color="black")
+
+merged_data %>%
+  lm(formula = N~Dry_mass_mg*CO2*N_nutrition) %>%
+  summary()
+
+merged_data %>%
+  lm(formula = N~CO2*N_nutrition) %>%
+  summary()
+```
+
+# C% en fonction de la biomasse
+
+```{r, fig.width=10, fig.height=8}
+
+merged_data %>%
+  ggplot(aes(x=Dry_mass_mg, y = C, label=CO2)) +
+  geom_point(aes(size=CO2, color=N_nutrition))+
+  stat_cor() + geom_smooth(method = 'lm', color='black', alpha=0.1) + 
+  scale_color_brewer(palette = "Accent")+
+  geom_text(size=2)
+
+
+merged_data %>%
+  ggplot(aes(x=Dry_mass_mg, y = C, label=CO2, color=N_nutrition)) +
+  geom_point(aes(size=CO2))+
+  stat_cor() + geom_smooth(method = 'lm', alpha=0.1) + 
+  scale_color_brewer(palette = "Accent")+
+  geom_text(size=2, color="black")
+
+merged_data %>%
+  ggplot(aes(x=Dry_mass_mg, y = C, label=CO2, color=interaction(N_nutrition, CO2))) +
+  geom_point(aes(size=CO2))+
+  stat_cor() + geom_smooth(method = 'lm', alpha=0.1) + 
+  scale_color_brewer(palette = "Accent")+
+  geom_text(size=2, color="black")
+```
+
+
+
 # N% en fonction de C%
 
 
@@ -138,41 +216,18 @@ data %>%
   geom_point(aes(size=CO2, color=N_nutrition)) + 
   scale_color_brewer(palette = "Accent")+
   geom_text(size=2)
-```
 
-# N% en fonction de la biomasse
-
-```{r, fig.width=10, fig.height=8}
-read.csv("../data/OC_08_dry_biomass.csv", sep=';') %>%
-  filter(!str_detect(TubeVide, "Date")) %>%
-  mutate(Dry_mass_mg = (parse_number(Tube_masse_seche)- parse_number(TubeVide))*1000) %>%
-  select(Tube, Dry_mass_mg) %>% 
-  inner_join(data, by="Tube") %>%
-  select(-c(Tissue, RNA)) %>%
-  filter(Dry_mass_mg >0) %>%
-  ggplot(aes(x=Dry_mass_mg, y = N, label=CO2)) +
-  geom_point(aes(size=CO2, color=N_nutrition))+
-  stat_cor() + geom_smooth(method = 'lm', color='black', alpha=0.1) + 
+data %>%
+  ggplot(aes(x=C, y = N, label=CO2, color=N_nutrition)) +
+  geom_point(aes(size=CO2))+
+  stat_cor() + geom_smooth(method = 'lm', alpha=0.1) + 
   scale_color_brewer(palette = "Accent")+
-  geom_text(size=2)
-```
+  geom_text(size=2, color="black")
 
-# C% en fonction de la biomasse
-
-```{r, fig.width=10, fig.height=8}
-
-read.csv("../data/OC_08_dry_biomass.csv", sep=';') %>%
-  filter(!str_detect(TubeVide, "Date")) %>%
-  mutate(Dry_mass_mg = (parse_number(Tube_masse_seche)- parse_number(TubeVide))*1000) %>%
-  select(Tube, Dry_mass_mg) %>% 
-  inner_join(data, by="Tube") %>%
-  select(-c(Tissue, RNA)) %>%
-  filter(Dry_mass_mg >0) %>%
-  ggplot(aes(x=Dry_mass_mg, y = C, label=CO2)) +
-  geom_point(aes(size=CO2, color=N_nutrition))+
-  stat_cor() + geom_smooth(method = 'lm', color='black', alpha=0.1) + 
+data %>%
+  ggplot(aes(x=C, y = N, label=CO2, color=interaction(N_nutrition, CO2))) +
+  geom_point(aes(size=CO2))+
+  stat_cor() + geom_smooth(method = 'lm', alpha=0.1) + 
   scale_color_brewer(palette = "Accent")+
-  geom_text(size=2)
+  geom_text(size=2, color="black")
 ```
-
-
