@@ -59,9 +59,6 @@ def quality():
                  -h ./fastp_reports/"+s+".html -o "+args.o+"/"+s+" \
                  --thread "+str(args.nThreads)+" -p  -j ./fastp_reports/"+s+".json")
 
-        
-
-
 
 def mapping():
     # maps reads to TAIR10 ref genome using STAR
@@ -101,5 +98,3 @@ if args.mode == "mapping":
     mapping()
 if args.mode == "quantif":
     quantif_parallel()
-
-
