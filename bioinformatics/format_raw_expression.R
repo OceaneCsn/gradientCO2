@@ -17,7 +17,7 @@ data <- read.csv(header = TRUE, row.names = "Gene", file = 'data/OC_08_raw_expre
 
 data <- data[!str_detect(row.names(data), '__'),]
 
-corrplot(cor(data), method = 'color', order = 'alphabet', col.lim = c(0,1), addrect = T)
+#corrplot(cor(data), method = 'color', order = 'alphabet', col.lim = c(0,1), addrect = T)
 
 
 annot <- read.csv('data/OC_08_annotation.csv', sep=';') %>%
@@ -62,15 +62,29 @@ colnames(dc2) <- colnames(dc2) %>%
   str_replace("tmp", "400.Mix_4")%>%
   str_replace("775.KNO3_4", "tmp") %>%
   str_replace("400.Mix_3", "775.KNO3_4") %>%
-  str_replace("tmp", "400.Mix_3")
+  str_replace("tmp", "400.Mix_3")%>%
+  str_replace("775.KNO3_2", "tmp") %>%
+  str_replace("900.KNO3_4", "775.KNO3_2") %>%
+  str_replace("tmp", "900.KNO3_4")%>%
+  str_replace("775.Mix_2", "tmp") %>%
+  str_replace("900.Mix_2", "775.Mix_2") %>%
+  str_replace("tmp", "900.Mix_2")
 
 
-corrplot(cor(dc2), method = 'color', order = 'alphabet', col.lim = c(0,1), addrect = T)
+corrplot(cor(data), method = 'color', order = 'alphabet', col.lim = c(0,1), addrect = T)
 
+corrplot(cor(dc2), method = 'color', order = 'alphabet', col.lim = c(0,1), addrect = T) 
+
+
+dc2 <- dc2[order(colnames(dc2))]
+
+reshape2::melt(cor(dc2)) %>%
+  ggplot(aes(x=Var1, y=Var2, fill = -value)) + geom_tile()+ scale_fill_distiller(palette = "Spectral") +
+  theme(axis.text.x = element_text(angle=90))
 
 corrplot(cor(dc2), method = 'color', order = 'hclust', col.lim = c(0,1), addrect = T)
 
-# corrplot(cor(data), method = 'color', order = 'alphabet', col.lim = c(0,1), addrect = T)
+# 
 # 
 # corrplot(cor(data), method = 'color', order = 'hclust', col.lim = c(0,1), addrect = T)
 # 
