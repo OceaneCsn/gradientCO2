@@ -1,0 +1,85 @@
+---
+title: "Analyse de Carbone/Azote sous gradient de CO2"
+author: "Océane"
+output: 
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+    df_print: paged
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DIANE)
+library(tidyverse)
+library(corrplot)
+library(patchwork)
+library(splines)
+library(limma)
+load('../rdata/expression_data_no_mismatch.rdata')
+```
+
+## Context
+
+Comme on a la variable continue du CO2 élevé, on se dit que les expressions différentielles deux à deux auront moins d'intérêt que des analyses par splines.
+
+## Import et normalisation des données 
+
+
+Données après correction des mix-up samples :
+
+```{r import, fig.width=10}
+corrplot(cor(data), method = 'color')
+
+tcc <- normalize(data, norm_method = 'tmm', iteration = FALSE)
+conditions <- str_split_fixed(colnames(data), '_', 2)[,1]
+tcc <- filter_low_counts(tcc, 10*length(conditions))
+normalized_counts <- TCC::getNormalizedData(tcc)
+draw_distributions(data) /
+draw_distributions(normalized_counts)
+
+draw_PCA(normalized_counts)
+```
+
+## Differential expression analysis
+
+```{r}
+DF <- 2
+FDR <- 0.01
+
+CO2 <- as.numeric(str_split_fixed(conditions, '\\.', 2)[,1])
+CO2_spline <- ns(CO2, df = DF)
+
+N <- str_split_fixed(conditions, '\\.', 2)[,2]
+
+design <- model.matrix(~CO2_spline*N)
+fit <- lmFit(normalized_counts, design) %>% 
+  eBayes() 
+
+CO2_coeffs <- 2:(1+DF)
+N_coeff <- DF+2
+CO2_N_coeffs <- (DF+3):ncol(design)
+
+DEGs_CO2 <- topTable(fit, coef=CO2_coeffs, 
+                        adjust.method = "fdr", 
+                        p.value=FDR, number=20000)
+
+DEGs_N <- topTable(fit, coef=N_coeff, 
+                        adjust.method = "fdr", 
+                        p.value=FDR, number=20000)
+
+DEGs_CO2_N <- topTable(fit, coef=CO2_N_coeffs, 
+                        adjust.method = "fdr", 
+                        p.value=FDR, number=20000)
+
+spline_dea <- function(co2, data, df = 4, fdr = 0.05){
+  design
+  
+  
+  
+  return(Qle0.05)
+}
+```
+

@@ -16,6 +16,9 @@ Increase in biomass as CO$_2$ increases, even more marked in mix than KNO3. See 
 
 Decrease in N content as CO$_2$ increases, even more marked in mix than KNO3. See `phenotypes/N-C.html` for graph and splines analyses.
 
+
+Correlation analyses between N content and biomass are also done, and show no significant association for comparable N nutrition and CO2 condition.
+
 # Transcriptomics analyses
 
 ## Bioinformatics
