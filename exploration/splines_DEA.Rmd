@@ -10,7 +10,7 @@ output:
 ---
 
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, warning=FALSE, error=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(DIANE)
 library(tidyverse)
@@ -18,6 +18,7 @@ library(corrplot)
 library(patchwork)
 library(splines)
 library(limma)
+library(ggpubr)
 load('../rdata/expression_data_no_mismatch.rdata')
 ```
 
@@ -30,7 +31,7 @@ Comme on a la variable continue du CO2 élevé, on se dit que les expressions di
 
 Données après correction des mix-up samples :
 
-```{r import, fig.width=10}
+```{r import, fig.width=15, fig.height=15}
 corrplot(cor(data), method = 'color')
 
 tcc <- normalize(data, norm_method = 'tmm', iteration = FALSE)
@@ -47,7 +48,7 @@ draw_PCA(normalized_counts)
 
 ```{r}
 DF <- 2
-FDR <- 0.01
+FDR <- 0.05
 
 CO2 <- as.numeric(str_split_fixed(conditions, '\\.', 2)[,1])
 CO2_spline <- ns(CO2, df = DF)
@@ -62,24 +63,109 @@ CO2_coeffs <- 2:(1+DF)
 N_coeff <- DF+2
 CO2_N_coeffs <- (DF+3):ncol(design)
 
-DEGs_CO2 <- topTable(fit, coef=CO2_coeffs, 
+DEGs_CO2 <- rownames(topTable(fit, coef=CO2_coeffs, 
                         adjust.method = "fdr", 
-                        p.value=FDR, number=20000)
+                        p.value=FDR, number=20000))
 
-DEGs_N <- topTable(fit, coef=N_coeff, 
+DEGs_N <- rownames(topTable(fit, coef=N_coeff, 
                         adjust.method = "fdr", 
-                        p.value=FDR, number=20000)
+                        p.value=FDR, number=20000))
 
-DEGs_CO2_N <- topTable(fit, coef=CO2_N_coeffs, 
+DEGs_CO2_N <- rownames(topTable(fit, coef=CO2_N_coeffs, 
                         adjust.method = "fdr", 
-                        p.value=FDR, number=20000)
-
-spline_dea <- function(co2, data, df = 4, fdr = 0.05){
-  design
-  
-  
-  
-  return(Qle0.05)
-}
+                        p.value=FDR, number=20000))
+length(DEGs_CO2)
+length(DEGs_N)
+length(DEGs_CO2_N)
 ```
+
+
+# Drawing the expression levels of some genes of interest
+
+```{r, fig.width=6, fig.height=5}
+genes <- sample(DEGs_CO2, 5)
+
+
+draw_genes <- function(genes, normalized_counts, ncol=NULL){
+  reshape2::melt(normalized_counts[genes,] , 
+               quiet =T, value.name = "Expression") %>%
+  rename(gene = Var1, condition = Var2) %>%
+  separate(condition, into = c("CO2", "Nutrition", "rep")) %>%
+  mutate(CO2 = as.numeric(CO2)) %>%
+  ggplot(aes(x=CO2, y=Expression, color=Nutrition, fill = Nutrition)) +
+  geom_point() + geom_smooth(method = "lm", se = TRUE,
+                size = 1, alpha=0.1,
+                formula = y ~ splines::ns(x, df = DF)) +
+  facet_wrap(~gene, scales = 'free', ncol = ncol) + 
+    theme_pubr() + scale_fill_brewer(palette="Accent")+ 
+    scale_color_brewer(palette="Accent")+
+    labs(title = "Normalized gene expression in CO2 gradient experiment", 
+         subtitle = paste("Splines interpolation with DF=", DF))
+}
+
+
+draw_genes(genes, normalized_counts)
+```
+
+# Clustering of DEGs
+
+```{r, fig.width=10, fig.height=10, message=FALSE}
+draw_clusters <- function(normalized_counts, genes, clustering, ncol=NULL){
+  reshape2::melt(normalized_counts[genes,], 
+               quiet =T, value.name = "Expression") %>%
+  rename(gene = Var1, condition = Var2) %>%
+  separate(condition, into = c("CO2", "Nutrition", "rep")) %>%
+  mutate(CO2 = as.numeric(CO2),
+         cluster = clustering$membership[gene]) %>%
+  group_by(gene) %>%
+  mutate(Expression= (Expression-mean(Expression))/sd(Expression)) %>%
+    group_by(cluster, CO2, Nutrition, rep) %>%
+    mutate(N_genes = n()) %>%
+    unite(Cluster_label, cluster, N_genes, sep = ', N=') %>%
+  ggplot(aes(x=CO2, y=Expression, color=Nutrition, fill = Nutrition)) +
+  geom_point(alpha=0.01)+geom_smooth(method = "lm", se = TRUE,
+                size = 1, alpha=0.1,
+                formula = y ~ splines::ns(x, df = DF)) +
+  facet_wrap(~Cluster_label, scales = 'free', ncol = ncol) + 
+    theme_pubr() +scale_fill_brewer(palette="Accent")+ 
+    scale_color_brewer(palette="Accent")+
+    labs(title = "Normalized clusters expression in CO2 gradient experiment", 
+         subtitle = paste("Splines interpolation with DF=", DF))
+}
+
+draw_clusters(normalized_counts, DEGs_CO2, 
+              run_coseq(conds = conditions, data = normalized_counts, 
+                        genes = DEGs_CO2, K = 6, transfo = "arcsin", 
+                        model = "Normal", seed = 123)) + ggtitle("C02 DEGs : clusters profiles")
+
+
+draw_clusters(normalized_counts, DEGs_N, 
+              run_coseq(conds = conditions, data = normalized_counts, 
+                        genes = DEGs_N, K = 4, transfo = "arcsin", 
+                        model = "Normal", seed = 123)) + ggtitle("N DEGs : clusters profiles")
+
+draw_clusters(normalized_counts, DEGs_CO2_N, 
+              run_coseq(conds = conditions, data = normalized_counts, 
+                        genes = DEGs_CO2_N, K = 9, transfo = "arcsin", 
+                        model = "Normal", seed = 123)) + ggtitle("N*CO2 DEGs : clusters profiles")
+```
+
+
+# Ontology enrichment of DEGs
+
+```{r}
+bg <- convert_from_agi(rownames(normalized_counts))
+entrez <- convert_from_agi(DEGs_CO2)
+go_CO2 <- enrich_go(entrez, bg)
+DT::datatable(go_CO2) 
+
+entrez <- convert_from_agi(DEGs_N)
+go_N <- enrich_go(entrez, bg)
+DT::datatable(go_N)
+
+entrez <- convert_from_agi(DEGs_CO2_N)
+go_CO2_N <- enrich_go(entrez, bg)
+DT::datatable(go_CO2_N)
+```
+
 
