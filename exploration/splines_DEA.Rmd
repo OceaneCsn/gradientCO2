@@ -1,5 +1,5 @@
 ---
-title: "Analyse de Carbone/Azote sous gradient de CO2"
+title: "Analyse transcriptomique sous gradient de CO2"
 author: "Océane"
 output: 
   html_document:
@@ -22,9 +22,10 @@ library(ggpubr)
 load('../rdata/expression_data_no_mismatch.rdata')
 ```
 
-## Context
+## Contexte
 
-Comme on a la variable continue du CO2 élevé, on se dit que les expressions différentielles deux à deux auront moins d'intérêt que des analyses par splines.
+Avec la variable continue du CO2 élevé, on se dit que les expressions différentielles deux à deux auront moins d'intérêt que des analyses par splines.
+L'objective est donc de déterminer les profils des gènes différentiellements exprimés sur la base d'une interpolation polynomiale liée à l'élévation du CO2.
 
 ## Import et normalisation des données 
 
@@ -80,36 +81,98 @@ length(DEGs_CO2_N)
 ```
 
 
-# Drawing the expression levels of some genes of interest
+# Some genes of interest
 
-```{r, fig.width=6, fig.height=5}
+```{r, fig.width=16, fig.height=15}
+
+ngenes <- read.table('../data/Ngenes.csv', h=T, sep = ';')
+
 genes <- sample(DEGs_CO2, 5)
 
 
-draw_genes <- function(genes, normalized_counts, ncol=NULL){
-  reshape2::melt(normalized_counts[genes,] , 
+draw_genes <- function(genes, normalized_counts, ncol=NULL, labels = FASLE){
+  
+  genes <- intersect(genes, rownames(normalized_counts))
+  data <- reshape2::melt(normalized_counts[genes,] , 
                quiet =T, value.name = "Expression") %>%
   rename(gene = Var1, condition = Var2) %>%
   separate(condition, into = c("CO2", "Nutrition", "rep")) %>%
-  mutate(CO2 = as.numeric(CO2)) %>%
-  ggplot(aes(x=CO2, y=Expression, color=Nutrition, fill = Nutrition)) +
-  geom_point() + geom_smooth(method = "lm", se = TRUE,
-                size = 1, alpha=0.1,
-                formula = y ~ splines::ns(x, df = DF)) +
-  facet_wrap(~gene, scales = 'free', ncol = ncol) + 
-    theme_pubr() + scale_fill_brewer(palette="Accent")+ 
-    scale_color_brewer(palette="Accent")+
-    labs(title = "Normalized gene expression in CO2 gradient experiment", 
-         subtitle = paste("Splines interpolation with DF=", DF))
+  mutate(CO2 = as.numeric(CO2)) 
+  if(labels) {
+    data$label <- ngenes[match(data$gene, ngenes$AGI), "Gene"]
+    data %>%
+    ggplot(aes(x=CO2, y=Expression, color=Nutrition, fill = Nutrition)) +
+    geom_point() + geom_smooth(method = "lm", se = TRUE,
+                  size = 1, alpha=0.1,
+                  formula = y ~ splines::ns(x, df = DF)) +
+    facet_wrap(~label, scales = 'free', ncol = ncol) + 
+      theme_pubr() + scale_fill_brewer(palette="Accent")+ 
+      scale_color_brewer(palette="Accent")+
+      labs(title = "Normalized gene expression in CO2 gradient experiment", 
+           subtitle = paste("Splines interpolation with DF=", DF))
+  }
+  else{
+    data$label <- ngenes[match(data$gene, ngenes$AGI), "Gene"]
+    data %>%
+    ggplot(aes(x=CO2, y=Expression, color=Nutrition, fill = Nutrition)) +
+    geom_point() + geom_smooth(method = "lm", se = TRUE,
+                  size = 1, alpha=0.1,
+                  formula = y ~ splines::ns(x, df = DF)) +
+    facet_wrap(~gene, scales = 'free', ncol = ncol) + 
+      theme_pubr() + scale_fill_brewer(palette="Accent")+ 
+      scale_color_brewer(palette="Accent")+
+      labs(title = "Normalized gene expression in CO2 gradient experiment", 
+           subtitle = paste("Splines interpolation with DF=", DF))
+  }
 }
 
 
-draw_genes(genes, normalized_counts)
+draw_genes(ngenes[ngenes$Role == "nitrate uptake transport and metabolism","AGI"], normalized_counts, ncol = 4, labels = T)
+draw_genes(ngenes[ngenes$Role == "negative regulator","AGI"], normalized_counts, ncol = 4, labels = T)
+draw_genes(ngenes[ngenes$Role == "positive regulator","AGI"], normalized_counts, ncol = 3, labels = T)/
+draw_genes(ngenes[ngenes$Role == "signalling","AGI"], normalized_counts, ncol = 3, labels = T)
+
+```
+
+
+# Ontology enrichment of DEGs
+
+# CO2 DEGs
+
+```{r, fig.width=8, fig.height=8}
+bg <- convert_from_agi(rownames(normalized_counts))
+entrez <- convert_from_agi(DEGs_CO2)
+go_CO2 <- enrich_go(entrez, bg)
+DT::datatable(go_CO2,
+                  options = list(scrollX = TRUE)) 
+draw_enrich_go(go_CO2)
+```
+
+# Nitrate DEGs
+
+
+```{r, fig.width=8, fig.height=8}
+entrez <- convert_from_agi(DEGs_N)
+go_N <- enrich_go(entrez, bg)
+DT::datatable(go_N,
+                  options = list(scrollX = TRUE))
+draw_enrich_go(go_CO2)
+```
+
+
+# CO2*N DEGs
+
+```{r, fig.width=8, fig.height=18}
+entrez <- convert_from_agi(DEGs_CO2_N)
+go_CO2_N <- enrich_go(entrez, bg)
+DT::datatable(go_CO2_N,
+                  options = list(scrollX = TRUE))
+draw_enrich_go(go_CO2)
 ```
 
 # Clustering of DEGs
 
-```{r, fig.width=10, fig.height=10, message=FALSE}
+```{r, fig.width=10, fig.height=10, message=FALSE, warning=FALSE}
 draw_clusters <- function(normalized_counts, genes, clustering, ncol=NULL){
   reshape2::melt(normalized_counts[genes,], 
                quiet =T, value.name = "Expression") %>%
@@ -151,21 +214,6 @@ draw_clusters(normalized_counts, DEGs_CO2_N,
 ```
 
 
-# Ontology enrichment of DEGs
 
-```{r}
-bg <- convert_from_agi(rownames(normalized_counts))
-entrez <- convert_from_agi(DEGs_CO2)
-go_CO2 <- enrich_go(entrez, bg)
-DT::datatable(go_CO2) 
-
-entrez <- convert_from_agi(DEGs_N)
-go_N <- enrich_go(entrez, bg)
-DT::datatable(go_N)
-
-entrez <- convert_from_agi(DEGs_CO2_N)
-go_CO2_N <- enrich_go(entrez, bg)
-DT::datatable(go_CO2_N)
-```
 
 
