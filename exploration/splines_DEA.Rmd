@@ -22,7 +22,7 @@ library(ggpubr)
 load('../rdata/expression_data_no_mismatch.rdata')
 ```
 
-## Contexte
+# Contexte
 
 Avec la variable continue du CO2 élevé, on se dit que les expressions différentielles deux à deux auront moins d'intérêt que des analyses par splines.
 L'objective est donc de déterminer les profils des gènes différentiellements exprimés sur la base d'une interpolation polynomiale liée à l'élévation du CO2.
@@ -45,7 +45,7 @@ draw_distributions(normalized_counts)
 draw_PCA(normalized_counts)
 ```
 
-## Differential expression analysis
+# Differential expression analysis
 
 ```{r}
 DF <- 2
@@ -64,24 +64,118 @@ CO2_coeffs <- 2:(1+DF)
 N_coeff <- DF+2
 CO2_N_coeffs <- (DF+3):ncol(design)
 
+
+annot <- gene_annotations$`Arabidopsis thaliana`
+
+
+```
+
+## CO2 DEGs
+
+
+
+```{r}
+
+CO2_dea <- topTable(fit, coef=CO2_coeffs, 
+                        adjust.method = "fdr", 
+                        p.value=FDR, number=20000)
+
+CO2_dea[,c("label", "description")] <- 
+  annot[rownames(CO2_dea), c("label", "description") ]
+
+
+DT::datatable(CO2_dea[c("label", "description", "adj.P.Val", "AveExpr", "CO2_spline1", "CO2_spline2")], 
+              options = list(scrollX = TRUE)) %>%
+  DT::formatSignif(columns = c("adj.P.Val", "AveExpr",  "CO2_spline1",  "CO2_spline2"),
+                   digits = 4)%>%
+  DT::formatStyle(
+          columns = c("CO2_spline1"),
+          target = c("cell", "row"),
+          color = DT::styleInterval(cuts = c( 0 ), 
+                                              values = c("#FF000035", "#72F02466")))%>%
+  DT::formatStyle(
+          columns = c("CO2_spline2"),
+          target = c("cell", "row"),
+          color = DT::styleInterval(cuts = c( 0 ), 
+                                              values = c("#FF000035", "#72F02466")))
+
 DEGs_CO2 <- rownames(topTable(fit, coef=CO2_coeffs, 
                         adjust.method = "fdr", 
                         p.value=FDR, number=20000))
+```
+
+
+## N DEGs
+
+
+```{r}
+
+N_dea <- topTable(fit, coef=N_coeff, 
+                        adjust.method = "fdr", 
+                        p.value=FDR, number=20000)
+
+N_dea[,c("label", "description")] <- 
+  annot[rownames(N_dea), c("label", "description") ]
+
+
+DT::datatable(N_dea[c("label", "description", "adj.P.Val", "AveExpr", "logFC")], 
+              options = list(scrollX = TRUE)) %>%
+  DT::formatSignif(columns = c("adj.P.Val", "AveExpr",  "logFC"),
+                   digits = 4)%>%
+  DT::formatStyle(
+          columns = c("logFC"),
+          target = c("cell", "row"),
+          color = DT::styleInterval(cuts = c( 0 ), 
+                                              values = c("#FF000035", "#72F02466")))
 
 DEGs_N <- rownames(topTable(fit, coef=N_coeff, 
                         adjust.method = "fdr", 
                         p.value=FDR, number=20000))
+```
+
+## CO2*N DEGs
+
+
+
+```{r}
+
+CO2_N_dea <- topTable(fit, coef=CO2_N_coeffs, 
+                        adjust.method = "fdr", 
+                        p.value=FDR, number=20000)
+
+CO2_N_dea[,c("label", "description")] <- 
+  annot[rownames(CO2_N_dea), c("label", "description") ]
+
+
+DT::datatable(CO2_N_dea[c("label", "description", "adj.P.Val", "AveExpr", "CO2_spline1.NMix", "CO2_spline2.NMix")], 
+              options = list(scrollX = TRUE)) %>%
+  DT::formatSignif(columns = c("adj.P.Val", "AveExpr",  "CO2_spline1.NMix", "CO2_spline2.NMix"),
+                   digits = 4)%>%
+  DT::formatStyle(
+          columns = c("CO2_spline1.NMix"),
+          target = c("cell", "row"),
+          color = DT::styleInterval(cuts = c( 0 ), 
+                                              values = c("#FF000035", "#72F02466")))%>%
+  DT::formatStyle(
+          columns = c("CO2_spline2.NMix"),
+          target = c("cell", "row"),
+          color = DT::styleInterval(cuts = c( 0 ), 
+                                              values = c("#FF000035", "#72F02466")))
 
 DEGs_CO2_N <- rownames(topTable(fit, coef=CO2_N_coeffs, 
                         adjust.method = "fdr", 
                         p.value=FDR, number=20000))
-length(DEGs_CO2)
-length(DEGs_N)
-length(DEGs_CO2_N)
 ```
 
 
-# Some genes of interest
+## Venn diagram of the 3 types of DEGs
+
+```{r}
+draw_venn(list("DEGs_CO2"=DEGs_CO2, "DEGs_N"=DEGs_N, "DEGs_CO2_N"=DEGs_CO2_N))
+```
+
+
+# Profiles of Nitrate genes
 
 ```{r, fig.width=16, fig.height=15}
 
@@ -137,36 +231,36 @@ draw_genes(ngenes[ngenes$Role == "signalling","AGI"], normalized_counts, ncol = 
 
 # Ontology enrichment of DEGs
 
-# CO2 DEGs
+## CO2 DEGs
 
-```{r, fig.width=8, fig.height=8}
+```{r, fig.width=12, fig.height=8}
 bg <- convert_from_agi(rownames(normalized_counts))
 entrez <- convert_from_agi(DEGs_CO2)
 go_CO2 <- enrich_go(entrez, bg)
-DT::datatable(go_CO2,
-                  options = list(scrollX = TRUE)) 
+# DT::datatable(go_CO2,
+#                   options = list(scrollX = TRUE)) 
 draw_enrich_go(go_CO2)
 ```
 
-# Nitrate DEGs
+## Nitrate DEGs
 
 
-```{r, fig.width=8, fig.height=8}
+```{r, fig.width=12, fig.height=8}
 entrez <- convert_from_agi(DEGs_N)
 go_N <- enrich_go(entrez, bg)
-DT::datatable(go_N,
-                  options = list(scrollX = TRUE))
-draw_enrich_go(go_CO2)
+# DT::datatable(go_N,
+#                   options = list(scrollX = TRUE))
+draw_enrich_go(go_N)
 ```
 
 
-# CO2*N DEGs
+## CO2*N DEGs
 
-```{r, fig.width=8, fig.height=18}
+```{r, fig.width=12, fig.height=18}
 entrez <- convert_from_agi(DEGs_CO2_N)
 go_CO2_N <- enrich_go(entrez, bg)
-DT::datatable(go_CO2_N,
-                  options = list(scrollX = TRUE))
+# DT::datatable(go_CO2_N,
+#                   options = list(scrollX = TRUE))
 draw_enrich_go(go_CO2)
 ```
 
