@@ -57,8 +57,17 @@ CO2_spline <- ns(CO2, df = DF)
 N <- str_split_fixed(conditions, '\\.', 2)[,2]
 
 design <- model.matrix(~CO2_spline*N)
-fit <- lmFit(normalized_counts, design) %>% 
-  eBayes() 
+
+library(DESeq2)
+dds <- DESeqDataSetFromMatrix(countData = data[rowSums(data) > 400,], 
+                              data.frame("N" = N, "CO2" = CO2), 
+                              design = design)
+dds <- DESeq(dds)
+resultsNames(dds)
+results(dds, contrast = 2)
+
+# fit <- lmFit(normalized_counts, design) %>% 
+#   eBayes() 
 
 CO2_coeffs <- 2:(1+DF)
 N_coeff <- DF+2
