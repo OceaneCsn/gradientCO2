@@ -179,7 +179,7 @@ ngenes <- read.table('../data/Ngenes.csv', h=T, sep = ';')
 genes <- sample(DEGs_CO2, 5)
 
 
-draw_genes <- function(genes, normalized_counts, ncol=NULL, labels = FASLE){
+draw_genes <- function(genes, normalized_counts, ncol=NULL, labels = FALSE, annotation = F){
   
   genes <- intersect(genes, rownames(normalized_counts))
   data <- reshape2::melt(normalized_counts[genes,] , 
@@ -188,7 +188,10 @@ draw_genes <- function(genes, normalized_counts, ncol=NULL, labels = FASLE){
   separate(condition, into = c("CO2", "Nutrition", "rep")) %>%
   mutate(CO2 = as.numeric(CO2)) 
   if(labels) {
-    data$label <- ngenes[match(data$gene, ngenes$AGI), "Gene"]
+    if(annotation)
+      data$label <- annot[match(data$gene, rownames(annot)), "label"]
+    else
+      data$label <- ngenes[match(data$gene, ngenes$AGI), "Gene"]
     data %>%
     ggplot(aes(x=CO2, y=Expression, color=Nutrition, fill = Nutrition)) +
     geom_point() + geom_smooth(method = "lm", se = TRUE,
@@ -220,6 +223,11 @@ draw_genes(ngenes[ngenes$Role == "nitrate uptake transport and metabolism","AGI"
 draw_genes(ngenes[ngenes$Role == "negative regulator","AGI"], normalized_counts, ncol = 4, labels = T)
 draw_genes(ngenes[ngenes$Role == "positive regulator","AGI"], normalized_counts, ncol = 3, labels = T)/
 draw_genes(ngenes[ngenes$Role == "signalling","AGI"], normalized_counts, ncol = 3, labels = T)
+
+
+load("../../Combi/Results/network_N_CO2.RData")
+candidates <- c(network_N_CO2$ranking$id[1:6], "AT2G21900","AT3G46600", network_N_CO2$ranking$id[8:13])
+draw_genes(candidates, normalized_counts, ncol = 3, labels = T, annotation  = T)
 
 ```
 
