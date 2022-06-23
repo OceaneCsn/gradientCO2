@@ -17,7 +17,7 @@ library(tidyverse)
 library(corrplot)
 library(patchwork)
 library(splines)
-library(limma)
+library(edgeR)
 library(ggpubr)
 load('../rdata/expression_data_no_mismatch.rdata')
 ```
@@ -49,34 +49,26 @@ draw_PCA(normalized_counts)
 
 ```{r}
 DF <- 2
-FDR <- 0.05
+FDR <- 0.01
 
 CO2 <- as.numeric(str_split_fixed(conditions, '\\.', 2)[,1])
 CO2_spline <- ns(CO2, df = DF)
 
 N <- str_split_fixed(conditions, '\\.', 2)[,2]
-
 design <- model.matrix(~CO2_spline*N)
 
-library(DESeq2)
-dds <- DESeqDataSetFromMatrix(countData = data[rowSums(data) > 400,], 
-                              data.frame("N" = N, "CO2" = CO2), 
-                              design = design)
-dds <- DESeq(dds)
-resultsNames(dds)
-results(dds, contrast = 2)
-
-# fit <- lmFit(normalized_counts, design) %>% 
-#   eBayes() 
+dge <- edgeR::DGEList(
+    counts = normalized_counts,
+    norm.factors = rep(1,ncol(normalized_counts)))
+  
+y <- edgeR::estimateDisp(dge, design)
+fit <- edgeR::glmQLFit(y, design)
 
 CO2_coeffs <- 2:(1+DF)
 N_coeff <- DF+2
 CO2_N_coeffs <- (DF+3):ncol(design)
 
-
 annot <- gene_annotations$`Arabidopsis thaliana`
-
-
 ```
 
 ## CO2 DEGs
@@ -85,17 +77,19 @@ annot <- gene_annotations$`Arabidopsis thaliana`
 
 ```{r}
 
-CO2_dea <- topTable(fit, coef=CO2_coeffs, 
-                        adjust.method = "fdr", 
-                        p.value=FDR, number=20000)
+
+CO2_dea <- edgeR::glmQLFTest(fit, coef = CO2_coeffs)$table %>%
+  filter(PValue < FDR)
 
 CO2_dea[,c("label", "description")] <- 
   annot[rownames(CO2_dea), c("label", "description") ]
 
-
-DT::datatable(CO2_dea[c("label", "description", "adj.P.Val", "AveExpr", "CO2_spline1", "CO2_spline2")], 
+CO2_dea[c("label", "description", "PValue", "logCPM", "logFC.CO2_spline1", "logFC.CO2_spline2")] %>%
+  rename(CO2_spline1 = logFC.CO2_spline1, 
+         CO2_spline2 = logFC.CO2_spline2) %>%
+DT::datatable(
               options = list(scrollX = TRUE)) %>%
-  DT::formatSignif(columns = c("adj.P.Val", "AveExpr",  "CO2_spline1",  "CO2_spline2"),
+  DT::formatSignif(columns = c("PValue", "logCPM",  "CO2_spline1",  "CO2_spline2"),
                    digits = 4)%>%
   DT::formatStyle(
           columns = c("CO2_spline1"),
@@ -108,9 +102,7 @@ DT::datatable(CO2_dea[c("label", "description", "adj.P.Val", "AveExpr", "CO2_spl
           color = DT::styleInterval(cuts = c( 0 ), 
                                               values = c("#FF000035", "#72F02466")))
 
-DEGs_CO2 <- rownames(topTable(fit, coef=CO2_coeffs, 
-                        adjust.method = "fdr", 
-                        p.value=FDR, number=20000))
+DEGs_CO2 <- rownames(CO2_dea)
 ```
 
 
@@ -118,18 +110,16 @@ DEGs_CO2 <- rownames(topTable(fit, coef=CO2_coeffs,
 
 
 ```{r}
-
-N_dea <- topTable(fit, coef=N_coeff, 
-                        adjust.method = "fdr", 
-                        p.value=FDR, number=20000)
+N_dea <- edgeR::glmQLFTest(fit, coef = N_coeff)$table %>%
+  filter(PValue < FDR)
 
 N_dea[,c("label", "description")] <- 
   annot[rownames(N_dea), c("label", "description") ]
 
 
-DT::datatable(N_dea[c("label", "description", "adj.P.Val", "AveExpr", "logFC")], 
+DT::datatable(N_dea[c("label", "description", "PValue", "logCPM", "logFC")], 
               options = list(scrollX = TRUE)) %>%
-  DT::formatSignif(columns = c("adj.P.Val", "AveExpr",  "logFC"),
+  DT::formatSignif(columns = c("PValue", "logCPM",  "logFC"),
                    digits = 4)%>%
   DT::formatStyle(
           columns = c("logFC"),
@@ -137,9 +127,7 @@ DT::datatable(N_dea[c("label", "description", "adj.P.Val", "AveExpr", "logFC")],
           color = DT::styleInterval(cuts = c( 0 ), 
                                               values = c("#FF000035", "#72F02466")))
 
-DEGs_N <- rownames(topTable(fit, coef=N_coeff, 
-                        adjust.method = "fdr", 
-                        p.value=FDR, number=20000))
+DEGs_N <- rownames(N_dea)
 ```
 
 ## CO2*N DEGs
@@ -148,17 +136,17 @@ DEGs_N <- rownames(topTable(fit, coef=N_coeff,
 
 ```{r}
 
-CO2_N_dea <- topTable(fit, coef=CO2_N_coeffs, 
-                        adjust.method = "fdr", 
-                        p.value=FDR, number=20000)
+CO2_N_dea <- edgeR::glmQLFTest(fit, coef = CO2_N_coeffs)$table %>%
+  filter(PValue < FDR)
 
 CO2_N_dea[,c("label", "description")] <- 
   annot[rownames(CO2_N_dea), c("label", "description") ]
 
-
-DT::datatable(CO2_N_dea[c("label", "description", "adj.P.Val", "AveExpr", "CO2_spline1.NMix", "CO2_spline2.NMix")], 
+CO2_N_dea[c("label", "description", "PValue", "logCPM", "logFC.CO2_spline1.NMix", "logFC.CO2_spline2.NMix")] %>%
+  rename(CO2_spline1.NMix=logFC.CO2_spline1.NMix , CO2_spline2.NMix=logFC.CO2_spline2.NMix) %>%
+DT::datatable( 
               options = list(scrollX = TRUE)) %>%
-  DT::formatSignif(columns = c("adj.P.Val", "AveExpr",  "CO2_spline1.NMix", "CO2_spline2.NMix"),
+  DT::formatSignif(columns = c("PValue", "logCPM",  "CO2_spline1.NMix", "CO2_spline2.NMix"),
                    digits = 4)%>%
   DT::formatStyle(
           columns = c("CO2_spline1.NMix"),
@@ -171,9 +159,7 @@ DT::datatable(CO2_N_dea[c("label", "description", "adj.P.Val", "AveExpr", "CO2_s
           color = DT::styleInterval(cuts = c( 0 ), 
                                               values = c("#FF000035", "#72F02466")))
 
-DEGs_CO2_N <- rownames(topTable(fit, coef=CO2_N_coeffs, 
-                        adjust.method = "fdr", 
-                        p.value=FDR, number=20000))
+DEGs_CO2_N <- rownames(CO2_N_dea)
 ```
 
 
