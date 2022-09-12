@@ -25,7 +25,7 @@ load('../rdata/expression_data_no_mismatch.rdata')
 # Contexte
 
 Avec la variable continue du CO2 élevé, on se dit que les expressions différentielles deux à deux auront moins d'intérêt que des analyses par splines.
-L'objective est donc de déterminer les profils des gènes différentiellements exprimés sur la base d'une interpolation polynomiale liée à l'élévation du CO2.
+L'objectif est donc de déterminer les profils des gènes différentiellement exprimés sur la base d'une interpolation polynomiale liée à l'élévation du CO2.
 
 ## Import et normalisation des données 
 
@@ -34,9 +34,8 @@ Données après correction des mix-up samples :
 
 ```{r import, fig.width=15, fig.height=15}
 corrplot(cor(data), method = 'color')
-
-tcc <- normalize(data, norm_method = 'tmm', iteration = FALSE)
 conditions <- str_split_fixed(colnames(data), '_', 2)[,1]
+tcc <- normalize(data, norm_method = 'tmm', conditions = conditions, iteration = FALSE)
 tcc <- filter_low_counts(tcc, 10*length(conditions))
 normalized_counts <- TCC::getNormalizedData(tcc)
 draw_distributions(data) /
@@ -221,7 +220,7 @@ draw_genes <- function(genes, normalized_counts, ncol=NULL, labels = FALSE, anno
 
 draw_genes(ngenes[ngenes$Role == "nitrate uptake transport and metabolism","AGI"], normalized_counts, ncol = 4, labels = T)
 draw_genes(ngenes[ngenes$Role == "negative regulator","AGI"], normalized_counts, ncol = 4, labels = T)
-draw_genes(ngenes[ngenes$Role == "positive regulator","AGI"], normalized_counts, ncol = 3, labels = T)/
+draw_genes(c(ngenes[ngenes$Role == "positive regulator","AGI"], "AT4G24020"), normalized_counts, ncol = 3, labels = T)/
 draw_genes(ngenes[ngenes$Role == "signalling","AGI"], normalized_counts, ncol = 3, labels = T)
 
 

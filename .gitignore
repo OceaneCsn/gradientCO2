@@ -1,3 +1,4 @@
 *.DS_Store
 .Rproj.user
 quantif_files/*
+rdata/pwm_prom_jaspar_dap.rdata
