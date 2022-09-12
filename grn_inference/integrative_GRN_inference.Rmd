@@ -45,13 +45,20 @@ dim(pwm_occurrence)
 
 ### bRf : biased Random Forests
 
-Let's infer a GRN using bRF with $\alpha=0.8$ and $D = 0.01$.
+Let's infer a GRN using bRF with $\alpha=1$ and $D = 0.005$.
+These values, especially $\alpha$; are derived from the manuscript presenting bRF.
 
 ```{r}
-importances <- bRF_inference(counts, genes, tfs, alpha = 0.8, 
+networks <- list()
+for(alpha in seq(0, 1, by = 0.2)){
+  importances <- bRF_inference(counts, genes, tfs, alpha = alpha, 
                              pwm_occurrence = pwm_occurrence, nCores = 40)
-grn_bRF <- bRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
-head(grn_bRF); dim(grn_bRF)
+  for(density in c(0.001,0.005,0.01)){
+    grn_bRF <- bRF_network(importances, density =density, pwm_occurrence, genes, tfs)
+    networks[[paste0(alpha, '_', density)]] <- grn_bRF
+  }
+}
+
 ```
 
 
@@ -70,17 +77,31 @@ head(grn_bRF); dim(grn_bRF)
 ### Validating the GRNs against ConnecTF
 
 ```{r}
-connecTF_validation <- evaluate_networks(list("bRF" = grn_bRF), 
-                  input_genes = genes, input_tfs = tfs, nCores = 10); connecTF_validation
+connecTF_validation <- evaluate_networks(networks, 
+                  input_genes = genes, input_tfs = tfs, nCores = 40); connecTF_validation
+
+connecTF_validation %>%
+  separate(col = network_name, into = c("alpha", "density"), sep = '_') %>%
+  ggplot(aes(x=alpha, y=precision, col = density)) +geom_smooth() + geom_point()
+
+connecTF_validation %>%
+  separate(col = network_name, into = c("alpha", "density"), sep = '_') %>%
+  ggplot(aes(x=alpha, y=recall, col = density)) +geom_smooth() + geom_point()
 ```
 
 
+# Inference of the final GRN
+
+```{r}
+importances <- bRF_inference(counts, genes, tfs, alpha = 1, 
+                             pwm_occurrence = pwm_occurrence, nCores = 40)
+grn_bRF <- bRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
+```
 
 ### Computing prediction error
 
 ```{r}
 get_MSE(grn_bRF, method = "bRF")
-get_MSE(grn_lasso.d3s, method = "LASSO-D3S")
 ```
 
 The error in predicting the target gene expression is however lower in LASSO-D3S.
