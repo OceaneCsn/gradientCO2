@@ -11,7 +11,7 @@ pwm_prom_ <- pwm_prom[pwm_prom$target %in% genes |
 pwm_prom_ <- pwm_prom_[pwm_prom_$pval < 1e-4,]
 known_tfs <- unique(pwm_prom_$TF)
 
-intersect(known_tfs, tfs)
+length(intersect(known_tfs, tfs))
 # construction de la matrice de présence du score
 pwm_occurrence <- matrix(NA, nrow = length(genes),
                          ncol = length(tfs),
@@ -29,3 +29,7 @@ for(tf in tfs){
 }
 
 save(pwm_occurrence, file = "rdata/pwm_occurrences_CO2_response.rdata")
+
+
+
+
