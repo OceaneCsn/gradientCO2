@@ -43,7 +43,7 @@ data <-
   rename(N_nutrition = N.y, N=N.x)
 
 DF=4
-data %>%
+fig <- data %>%
   ggplot(aes(x=CO2, y=N, color=N_nutrition, fill=N_nutrition))+
   geom_smooth(method = "lm", se = T, size = 1, alpha=0.3,
               formula = y ~ ns(x, df=DF))+
@@ -58,6 +58,10 @@ data %>%
   ggtitle("N% of plants under CO2 gradient and 2 types of N nutrition")+
   xlim(c(390, 910)) +
   labs(subtitle = "Spline interpolation, N=11 or 12 per CO2*N condition")
+
+
+
+ggexport(fig, filename = "../results/N_gradient.pdf", width = 8)
 ```
 
 Après discussion avec Thibaut, les deux valeurs les plus extrèmes pour le Mix à 775ppm (3.1 et 8.8) sont des problèmes de dosage dans l'appareil (une partie de l'azote du premier a fini dans le deuxième). Il propose de re-doser 132, 141, 142 et 121 :)
@@ -72,11 +76,16 @@ data %>%
   lm(formula=N ~ ns(CO2, df=DF)*N_nutrition)%>%
   summary()
 
+lm_N <- lm(data, formula=N ~ ns(CO2, df=DF)*N_nutrition)
+
+texreg(list(lm_biomass, lm_N))
+
 data.frame(ns(data$CO2, df=DF)) %>%
   mutate(CO2 = data$CO2) %>%
   gather(key="DF", value = "Value", contains("X")) %>%
   ggplot(aes(x=CO2, y=Value, color=DF))+
   geom_point() + geom_smooth() + theme_pubr()
+
 ```
 
 

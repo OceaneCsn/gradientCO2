@@ -226,3 +226,74 @@ evaluate_networks <- function(edges_list, validation = c("TARGET", "CHIPSeq", "D
   attr(result.validation, "rng") <- NULL # It contains the whole sequence of RNG seeds
   return(result.validation)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+test_precision <- function(net,input_genes = NULL, input_tfs = NULL,
+         validation = c("CHIPSeq", "DAPSeq", "TARGET"),
+         N = 200) {
+  
+  observed <- evaluate_network(net, validation,input_genes = input_genes, 
+                               input_tfs = input_tfs,)
+  tprs <- c()
+  for (i in 1:N) {
+    shuffled_net <- net
+    shuffled_net$to <- sample(shuffled_net$to, replace = FALSE)
+    res <-
+      evaluate_network(shuffled_net,input_genes = NULL, input_tfs = NULL,
+                       validation = validation)
+    tprs <- c(tprs, res$tpr)
+  }
+  pval <- sum(tprs > observed$tpr) / N
+  zscore <- (observed$tpr - mean(tprs, na.rm = TRUE)) / sd(tprs, na.rm = TRUE)
+  distr <- data.frame("Null distribution" = tprs)
+  plot <- ggplot2::ggplot(distr, ggplot2::aes(Null.distribution)) +
+    ggplot2::geom_density(fill = "#aceca1", alpha = 0.4) +
+    ggplot2::geom_vline(
+      xintercept = observed$tpr,
+      size = 2,
+      color = "#0C7C59",
+      show.legend = TRUE
+    )  +
+    ggplot2::geom_label(
+      ggplot2::aes(
+        x = observed$tpr,
+        label = paste("Observed\nvalidation\nrate:", round(observed$tpr, 3)),
+        y = N / 25
+      ),
+      colour = "#0C7C59",
+      angle = -90,
+      size = 4,
+      nudge_x = -0.0055,
+      label.size = 0
+    ) +
+    ggplot2::geom_jitter(
+      ggplot2::aes(x = Null.distribution, y = 0),
+      color = 'black',
+      size = 3,
+      alpha = 0.2
+    ) +
+    ggplot2::labs(
+      title = paste(
+        "Permutation test on GRN precision : P value =",
+        round(pval, 5),
+        " Z-score = ",
+        round(zscore, 3)
+      )
+    ) + ggpubr::theme_pubr() +
+    ggplot2::xlab("") + ggplot2::ylab("")
+  return(plot)
+  
+}

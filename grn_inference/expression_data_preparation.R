@@ -63,6 +63,7 @@ CO2_dea[,c("label", "description")] <-
 
 CO2_responsive_genes <- list("counts" = normalized_counts_kno3[rownames(CO2_dea),], 
                              "genes" = rownames(CO2_dea),
-                             "tfs" = tfs)
+                             "tfs" = tfs,
+                             "counts_all_N" = normalized_counts)
 
 save(CO2_responsive_genes, file = "rdata/CO2_degs_expression.rdata")

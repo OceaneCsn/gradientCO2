@@ -2,3 +2,5 @@
 .Rproj.user
 quantif_files/*
 rdata/pwm_prom_jaspar_dap.rdata
+.so
+.o

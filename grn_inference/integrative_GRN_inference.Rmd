@@ -5,11 +5,18 @@ output: html_document
   
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
+library(tidyverse)
+library(igraph)
+library(patchwork)
+library(DIANE)
+library(ggpubr)
+library(gridExtra)
+# custom scripts for GRN inference
 source('../inference_functions/bRF.R')
 source('../inference_functions/LASSO-D3S.R')
 source('../inference_functions/evaluateNetwork.R')
 source('../inference_functions/MSE.R')
+source('../grn_inference/rank_nodes.R')
 ```
 
 This document demonstrates the use of the bRF and LASSO-D3S functions for integrative GRN inference.
@@ -23,6 +30,7 @@ Prior TFBS information was built by searching in the promoters of the N-responsi
 
 ### Expression data
 
+Here we restrinct ourselves to the study of genes responding to CO2, and only under KNO3 nutrition.
 Import of the expression data and the N-responsive genes and regulators :
 
 ```{r}
@@ -42,37 +50,40 @@ dim(pwm_occurrence)
 
 ## GRN inference
 
-
-### bRf : biased Random Forests
+### Quick parametric exploration to find optimal $\alpha$ and $k$.
 
 Let's infer a GRN using bRF with $\alpha=1$ and $D = 0.005$.
 These values, especially $\alpha$; are derived from the manuscript presenting bRF.
 
 ```{r}
-networks <- list()
-for(alpha in seq(0, 1, by = 0.2)){
-  importances <- bRF_inference(counts, genes, tfs, alpha = alpha, 
-                             pwm_occurrence = pwm_occurrence, nCores = 40)
-  for(density in c(0.001,0.005,0.01)){
-    grn_bRF <- bRF_network(importances, density =density, pwm_occurrence, genes, tfs)
-    networks[[paste0(alpha, '_', density)]] <- grn_bRF
+
+get_alpha_exploration <- function(){
+  networks <- list()
+  for(alpha in seq(0, 1, by = 0.1)){
+  
+    for(rep in 1:3){
+      importances <- bRF_inference(counts, genes, tfs, alpha = alpha,
+                                 prior_strength = 1,
+                                 pwm_occurrence = pwm_occurrence, nCores = 50)
+  
+      for(density in c(0.001, 0.0025, 0.005, 0.01)){
+  
+      grn_bRF <- bRF_network(importances, density =density, pwm_occurrence, genes, tfs)
+      networks[[paste0(rep,'_', alpha, '_', density)]] <- grn_bRF
+    }
+    }
   }
 }
 
+# networks <- get_alpha_exploration()
+# networks <- networks[str_detect(names(networks), "0.005")]
+# save(networks, file = "parameter_exploration.rdata")
+
+load("parameter_exploration.rdata")
+edges_num <- lapply(networks, function(df) df[sapply(df, is.numeric)])
+d <- data.frame(name = names(unlist(lapply(edges_num, FUN = nrow))),
+                 pwm = unlist(lapply(edges_num, FUN = colMeans)))
 ```
-
-
-<!-- ### LASSO-D3S : LASSO with Differential Shrinkage and Stability Selection -->
-
-<!-- Let's infer a GRN using LASSO-D3S with $\alpha=0.8$ and $D = 0.01$. -->
-
-<!-- ```{r} -->
-<!-- pvalues <- LASSO.D3S_inference(counts, genes, tfs, alpha = 0.8, N = 50, -->
-<!--                                pwm_occurrence = pwm_occurrence, nCores = 50) -->
-<!-- grn_lasso.d3s <- LASSO.D3S_network(pvalues, density = 0.005, pwm_occurrence, genes, tfs) -->
-<!-- head(grn_lasso.d3s); dim(grn_lasso.d3s) -->
-<!-- ``` -->
-
 
 ### Validating the GRNs against ConnecTF
 
@@ -80,29 +91,482 @@ for(alpha in seq(0, 1, by = 0.2)){
 connecTF_validation <- evaluate_networks(networks, 
                   input_genes = genes, input_tfs = tfs, nCores = 40); connecTF_validation
 
-connecTF_validation %>%
-  separate(col = network_name, into = c("alpha", "density"), sep = '_') %>%
-  ggplot(aes(x=alpha, y=precision, col = density)) +geom_smooth() + geom_point()
 
-connecTF_validation %>%
-  separate(col = network_name, into = c("alpha", "density"), sep = '_') %>%
-  ggplot(aes(x=alpha, y=recall, col = density)) +geom_smooth() + geom_point()
+target_validation <- evaluate_networks(networks, validation = c("TARGET"),
+                  input_genes = genes, input_tfs = tfs, nCores = 40); connecTF_validation
+fig <- d%>%
+  separate(col = name, into = c("rep", "alpha", "density"), sep = '_') %>%
+  filter(density==0.005) %>%
+  mutate(density = str_remove(density,"\\.pwm")) %>%
+  mutate(alpha = as.numeric(alpha)) %>%
+  ggplot(aes(x=alpha, y=pwm, col = density, fill = density)) +geom_smooth() + 
+  geom_point() + theme_pubr(legend = 'none') + ylab("PWM support") +
+  scale_color_brewer(palette = "Set2")+
+  scale_fill_brewer(palette = "Set2") + xlab(expression(alpha))+
+connecTF_validation%>%
+  separate(col = network_name, into = c("rep", "alpha", "density"), sep = '_') %>%
+  filter(density==0.005) %>%
+    mutate(alpha = as.numeric(alpha)) %>%
+  ggplot(aes(x=alpha, y=precision, col = density, fill = density)) +
+  geom_point() + theme_pubr() + geom_smooth() + 
+  scale_color_brewer(palette = "Set2")+
+  scale_fill_brewer(palette = "Set2")+ xlab(expression(alpha))+
+connecTF_validation%>%
+  separate(col = network_name, into = c("rep", "alpha", "density"), sep = '_') %>%
+  filter(density==0.005) %>%
+    mutate(alpha = as.numeric(alpha)) %>%
+  mutate(density = str_remove(density,"\\.pwm")) %>%
+  ggplot(aes(x=alpha, y=recall, col = density, fill = density)) +
+  geom_point() + theme_pubr(legend = 'none') + geom_smooth() + 
+  scale_color_brewer(palette = "Set2")+
+  scale_fill_brewer(palette = "Set2")+ xlab(expression(alpha)) +
+  plot_annotation(tag_levels = 'a', title = "PWM support, precision and recall for bRF as a function of TFBS contribution")
+
+
+ggexport(fig, filename = "../results/alpha_exploration_grn.pdf", width = 11, height = 5)
 ```
 
 
 # Inference of the final GRN
 
 ```{r}
-importances <- bRF_inference(counts, genes, tfs, alpha = 1, 
-                             pwm_occurrence = pwm_occurrence, nCores = 40)
+set.seed(131214)
+importances <- bRF_inference(counts, genes, tfs, alpha = 0.8, prior_strength = 1, 
+                             pwm_occurrence = pwm_occurrence, nCores = 50)
+
 grn_bRF <- bRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
+# PWM support
+mean(grn_bRF$pwm)
+
+# precision and recall
+evaluate_networks(list("bRF_0.5" = grn_bRF), input_genes = genes, input_tfs = tfs)
+
+nodes <- rank_nodes(graph_from_data_frame(grn_bRF, directed = T), 
+                     regulators_per_organism[["Arabidopsis thaliana"]], 
+                     gene_annotations$`Arabidopsis thaliana`)
+
+head(nodes[order(nodes$degree_out, decreasing = T),], n=30)
+head(nodes[order(nodes$degree_in, decreasing = T),], n=30)
+head(nodes[order(nodes$degree, decreasing = T),], n=30)
+
+
 ```
+# Testing thr GRN precision
+
+```{r}
+precision_perm <- test_precision(grn_bRF, input_genes = genes, input_tfs = tfs, N = 50); precision_perm
+ggexport(precision_perm, filename = "../results/precision_test_gradient.pdf", width = 7, height = 4)
+```
+
+
+# Ranking of the most connected nodes
+
+```{r}
+ranking <- nodes[order(nodes$degree_out, decreasing = T),
+                 c("label", "gene_type", "degree", "degree_in", 
+                   "degree_out")]
+
+N_response <- ifelse(ranking$label %in% c("HHO2", "HHO3", "HRS1", "CDF3", "BZIP3",
+                               "CCA1", "NLP7", "NLP6", "BT1", "BT2", "RAV1", "DIV1"), "#6BAED6", "grey95")[1:40]
+
+my_table_theme <- ttheme_minimal(core=list(bg_params = list(fill = N_response, col=NA, alpha = 0.6)))
+
+pdf("../results/nodes_ranking.pdf", width = 6, height = 12)
+grid.table(head(ranking, n=40), theme = my_table_theme)
+dev.off()
+
+```
+
+# Subnetwork of N relevant genes
+
+```{r}
+targets <- na.omit(nodes[str_detect(nodes$label, paste0(c("GRXS13", "NRT", "G6PD", "NIR", "CNX"),
+                                               collapse = '|')),"id"])
+
+
+regs <- na.omit(nodes[str_detect(nodes$label, paste0(c("HHO2", "HHO3", "HRS1", "CDF3", "BZIP3","HAT22",
+                               "CCA1", "NLP7", "NLP6", "BT1", "BT2", "RAV1", "DIV1", "LBD38", "LBD41"),
+                                               collapse = '|')),"id"])
+
+adj <- grn_bRF[grn_bRF$from %in% regs & grn_bRF$to%in% targets,] %>%
+  mutate(from_label = nodes[match(from, nodes$id), "label"],
+         from_to = nodes[match(to, nodes$id), "label"],
+         `PWM` = ifelse(pwm == 1, "In promoter", 
+                        ifelse(pwm==0.5, "Not available", 
+                               "Not in promoter"))) %>%
+  ggplot(aes(x=from_to, y=from_label, fill=PWM))+
+  geom_tile(col="grey") + theme_pubr() +
+  scale_fill_brewer(palette = "Accent") +
+  xlab("Target gene") + ylab("Regulator gene")
+
+ggexport(adj, filename = "../results/Ngenes_adjacency_allregs.pdf", width = 6, height = 12)
+
+
+```
+
+
+# Getting targets and regulators of some genes
+
+```{r}
+
+# NRT2.2
+get_gene_information(describe_node(network, "AT1G08100")$regulators, organism = "Arabidopsis thaliana")
+
+# NRT2.1
+get_gene_information(describe_node(network, "AT1G08090")$regulators, organism = "Arabidopsis thaliana")
+
+# NRT2.12
+get_gene_information(describe_node(network, "AT3G16180")$regulators, organism = "Arabidopsis thaliana")
+
+# regulators of G6PD3
+get_gene_information(describe_node(network, "AT1G24280")$regulators, organism = "Arabidopsis thaliana")
+
+# GRXS13
+get_gene_information(describe_node(network, "AT1G03850")$regulators, organism = "Arabidopsis thaliana")
+
+# regulators of NIR
+get_gene_information(describe_node(network, "AT2G15620")$regulators, organism = "Arabidopsis thaliana")
+
+# regulators of GRXS13
+get_gene_information(describe_node(network, "AT1G03850")$regulators, organism = "Arabidopsis thaliana")
+
+# targets of LBD41
+get_gene_information(describe_node(network, "AT3G02550")$targets, organism = "Arabidopsis thaliana")
+
+# targets of HHO3
+get_gene_information(describe_node(network, "AT1G25550")$targets, organism = "Arabidopsis thaliana")
+
+# PP2CA
+get_gene_information(describe_node(network, "AT3G11410")$regulators, organism = "Arabidopsis thaliana")
+
+# targets of CCA1
+get_gene_information(describe_node(network, "AT2G46830")$targets, organism = "Arabidopsis thaliana")
+
+# targets of LHY
+get_gene_information(describe_node(network, "AT4G24020")$targets, organism = "Arabidopsis thaliana")
+
+# PHHT1.1
+get_gene_information(describe_node(network, "AT5G43350")$regulators, organism = "Arabidopsis thaliana")
+
+# PHHT1.2
+get_gene_information(describe_node(network, "AT2G31955")$regulators, organism = "Arabidopsis thaliana")
+
+```
+
+
+
+# Expression patterns of N genes
+
+```{r, fig.width=10}
+
+annot <- gene_annotations$`Arabidopsis thaliana`
+draw_genes <- function(genes, normalized_counts, ncol=NULL, 
+                       together = FALSE, labels = FALSE, annotation = F){
+  
+  genes <- intersect(genes, rownames(normalized_counts))
+  data <- reshape2::melt(normalized_counts[genes,] , 
+               quiet =T, value.name = "Expression") %>%
+  rename(gene = Var1, condition = Var2) %>%
+  separate(condition, into = c("CO2", "Nutrition", "rep")) %>%
+  mutate(CO2 = as.numeric(CO2)) 
+  if(labels) {
+    if(annotation)
+      data$label <- annot[match(data$gene, rownames(annot)), "label"]
+    else
+      data$label <- ngenes[match(data$gene, ngenes$AGI), "Gene"]
+    plot <- data %>%
+    ggplot(aes(x=CO2, y=Expression, color=Nutrition, fill = Nutrition)) +
+    geom_point() + geom_smooth(method = "lm", se = TRUE,
+                  size = 1, alpha=0.1,
+                  formula = y ~ splines::ns(x, df = DF)) +
+      theme_pubr() + scale_fill_brewer(palette="Accent")+ 
+      scale_color_brewer(palette="Accent")+
+      labs(title = "Normalized gene expression in CO2 gradient experiment", 
+           subtitle = paste("Splines interpolation with DF=", DF)) +
+      theme(strip.background = element_blank())
+    if(!together)
+      plot <- plot + facet_wrap(~label, scales = 'free', ncol = ncol) 
+    
+  }
+  else{
+    data$label <- ngenes[match(data$gene, ngenes$AGI), "Gene"]
+    plot <- data %>%
+    ggplot(aes(x=CO2, y=Expression, color=Nutrition, fill = Nutrition)) +
+    geom_point() + geom_smooth(method = "lm", se = TRUE,
+                  size = 1, alpha=0.1,
+                  formula = y ~ splines::ns(x, df = DF)) +
+    facet_wrap(~gene, scales = 'free', ncol = ncol) + 
+      theme_pubr() + scale_fill_brewer(palette="Accent")+ 
+      scale_color_brewer(palette="Accent")+
+      labs(title = "Normalized gene expression in CO2 gradient experiment", 
+           subtitle = paste("Splines interpolation with DF=", DF))
+    if(!together)
+      plot <- plot + facet_wrap(~label, scales = 'free', ncol = ncol) 
+  }
+  plot
+}
+
+targets <- na.omit(nodes[str_detect(nodes$label, paste0(c("GRXS13", "NRT", "G6PD", "NIR"),
+                                               collapse = '|')),"id"])
+
+regs <- na.omit(nodes[str_detect(nodes$label, paste0(c("HHO2", "HHO3", "HRS1", "CDF3", "BZIP3",
+                               "CCA1", "NLP7", "NLP6", "BT1", "BT2", "RAV1"),
+                                               collapse = '|')),"id"])
+
+fig_N <- (draw_genes(regs, counts, annotation = T, labels = T, ncol = 4) + ggtitle("Expression of regulator genes")) / 
+  ((draw_genes(targets, counts, annotation = T, labels = T, ncol = 2) + ggtitle("Expression of target genes")) + adj) + plot_annotation(tag_levels = 'a'); fig_N
+
+ggexport(fig_N, filename = "../results/expression_adj_N_genes.pdf", width = 12, height = 14)
+ggexport(draw_genes(targets, counts, annotation = T, labels = T), filename = "../results/expression_N_target.pdf", width = 10)
+
+
+
+draw_genes(targets, counts_all_N, annotation = T, labels = T)
+
+
+draw_genes_grouped <- function(genes, normalized_counts, ncol=NULL, 
+                       together = FALSE, labels = FALSE, annotation = F){
+  
+  genes <- intersect(genes, rownames(normalized_counts))
+  normalized_counts <- (normalized_counts - rowMeans(normalized_counts))/genefilter::rowSds(normalized_counts)
+  data <- reshape2::melt(normalized_counts[genes,] , 
+               quiet =T, value.name = "Expression") %>%
+  rename(gene = Var1, condition = Var2) %>%
+  separate(condition, into = c("CO2", "Nutrition", "rep")) %>%
+  mutate(CO2 = as.numeric(CO2)) 
+  if(labels) {
+    if(annotation)
+      data$label <- annot[match(data$gene, rownames(annot)), "label"]
+    else
+      data$label <- ngenes[match(data$gene, ngenes$AGI), "Gene"]
+    plot <- data %>%
+    ggplot(aes(x=CO2, y=Expression, group=label)) +
+    geom_point() + geom_smooth(method = "lm", se = TRUE,
+                  size = 1, alpha=0.05,
+                  formula = y ~ splines::ns(x, df = DF), color ="#6BAED6") +
+      theme_pubr(legend='none') + scale_fill_brewer(palette="Accent")+ 
+      scale_color_brewer(palette="Accent")+
+      labs(title = "Normalized gene expression in CO2 gradient experiment", 
+           subtitle = paste("Splines interpolation with DF=", DF))
+    if(!together)
+      plot <- plot + facet_wrap(~label, scales = 'free', ncol = ncol) 
+    
+  }
+  else{
+    data$label <- ngenes[match(data$gene, ngenes$AGI), "Gene"]
+    plot <- data %>%
+    ggplot(aes(x=CO2, y=Expression, group=label)) +
+    geom_point() + geom_smooth(method = "lm", se = TRUE,
+                  size = 1, alpha=0.1,
+                  formula = y ~ splines::ns(x, df = DF)) +
+    facet_wrap(~gene, scales = 'free', ncol = ncol) + 
+      theme_pubr(legend='none') + scale_fill_brewer(palette="Accent")+ 
+      scale_color_brewer(palette="Accent")+
+      labs(title = "Normalized gene expression in CO2 gradient experiment", 
+           subtitle = paste("Splines interpolation with DF=", DF))
+    if(!together)
+      plot <- plot + facet_wrap(~label, scales = 'free', ncol = ncol) 
+  }
+  plot
+}
+
+# CDF3 AT3G47500
+# CCA1 AT2G46830
+draw_genes_grouped(rownames(get_gene_information(
+  describe_node(network, "AT2G46830")$targets, organism = "Arabidopsis thaliana")), 
+  counts,together = T, annotation = T, labels = T)+ggtitle("CCA1")+
+draw_genes_grouped(rownames(get_gene_information(
+  describe_node(network, "AT1G25550")$targets, organism = "Arabidopsis thaliana")), 
+  counts,together = T, annotation = T, labels = T)+ggtitle("HHO3")
+
+
+draw_genes_grouped(rownames(get_gene_information(
+  describe_node(network, "AT1G13260")$targets, organism = "Arabidopsis thaliana")), 
+  counts,together = T, annotation = T, labels = T)+ggtitle("RAV1")+
+draw_genes_grouped(rownames(get_gene_information(
+  describe_node(network, "AT5G15830")$targets, organism = "Arabidopsis thaliana")), 
+  counts,together = T, annotation = T, labels = T)+ggtitle("BZIP3")
+
+
+draw_genes_grouped(rownames(get_gene_information(
+  describe_node(network, "AT1G64530")$targets, organism = "Arabidopsis thaliana")), 
+  counts,together = T, annotation = T, labels = T)+ggtitle("NLP6")+
+draw_genes_grouped(rownames(get_gene_information(
+  describe_node(network, "AT4G24020")$targets, organism = "Arabidopsis thaliana")), 
+  counts,together = T, annotation = T, labels = T)+ggtitle("NLP7")
+```
+
+
+
+
+```{r}
+
+draw_network_degrees <- function (nodes, graph) 
+{
+  targets <- nodes[nodes$gene_type == "Target Gene", "id"]
+  TFs <- nodes[nodes$gene_type == "Regulator", "id"]
+  degree_in_targets <- igraph::degree(graph, mode = "in", v = targets)
+  degree_in_tfs <- igraph::degree(graph, mode = "in", v = TFs)
+  degree_out_tfs <- igraph::degree(graph, mode = "out", v = TFs)
+  betweenness <- igraph::betweenness(graph, weights = NA, v = TFs)
+  deg_targ = data.frame(degree_in_targets)
+  Node_nw_st <- data.frame(degree_in_tfs, degree_out_tfs, betweenness)
+  deg_in_targ <- ggplot2::ggplot(data = deg_targ, ggplot2::aes(x = degree_in_targets)) + 
+    ggplot2::geom_histogram(fill = "#69b3a2", 
+                            alpha = 0.7) + ggplot2::ggtitle("In-Degree distribution of target genes") + theme_pubr()+
+    ggplot2::theme(plot.title = ggplot2::element_text(size = 16), 
+                   axis.text.x = ggplot2::element_text(size = 15), axis.title.x = ggplot2::element_blank(), 
+                   axis.title.y = ggplot2::element_blank())
+  deg_in_tfs <- ggplot2::ggplot(data = Node_nw_st, ggplot2::aes(x = degree_in_tfs)) +theme_pubr()+ 
+    ggplot2::geom_histogram(fill = "#69b3a2", 
+                            alpha = 0.7) + ggplot2::ggtitle("In-Degree distribution of regulators") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(size = 16), 
+                   axis.text.x = ggplot2::element_text(size = 15), axis.title.x = ggplot2::element_blank(), 
+                   axis.title.y = ggplot2::element_blank())
+  deg_out_tfs <- ggplot2::ggplot(data = Node_nw_st, ggplot2::aes(x = degree_out_tfs))+theme_pubr()+
+    ggplot2::geom_histogram(fill = "#69b322", 
+                            alpha = 0.7) + ggplot2::ggtitle("Out-Degree distribution of regulators") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(size = 16), 
+                   axis.text.x = ggplot2::element_text(size = 15), axis.title.x = ggplot2::element_blank(), 
+                   axis.title.y = ggplot2::element_blank())
+  bet <- ggplot2::ggplot(data = Node_nw_st, ggplot2::aes(x = betweenness))+theme_pubr() + 
+    ggplot2::geom_histogram(fill = "#E69F00", 
+                            alpha = 0.7) + ggplot2::ggtitle("Betweeness distribution of regulators") + 
+    ggplot2::theme(plot.title = ggplot2::element_text(size = 16), 
+                   axis.text.x = ggplot2::element_text(size = 15), axis.title.x = ggplot2::element_blank(), 
+                   axis.title.y = ggplot2::element_blank())
+  return(deg_in_targ + deg_in_tfs+ deg_out_tfs+ bet)
+}
+
+network <- igraph::graph_from_data_frame(grn_bRF, directed = TRUE)
+ggexport(draw_network_degrees(nodes, network), filename = "../results/bRF_k1_a0.8_degrees.pdf", width = 10)
+```
+
+# Degreee of TFs depending on their PWM availability
+
+```{r, fig.width=12, fig.height=4}
+pwm_imputed <- pwm_occurrence
+pwm_imputed[is.na(pwm_imputed)] <- 0.5
+known_tfs <- names(which(colMeans(pwm_imputed) != 0.5))
+
+out_degree <- data.frame(out_degree = table(grn_bRF$from), 
+                         tf = names(table(grn_bRF$from)),
+                         known = names(table(grn_bRF$from)) %in% known_tfs)
+
+out_degree %>%
+  ggplot(aes(y=out_degree.Freq, x=known)) + geom_boxplot()+
+  geom_jitter() 
+table(nodes$group)
+#p0 + p0.5+ p0.6 + P0.8+p1+ plot_layout(nrow=1)
+```
+
+
+
+
+
+
+
+
+### GSEA
+
+
+```{r}
+
+library(clusterProfiler)
+
+nodes[names(convert_from_agi(nodes$id)), "entrez"] <- 
+ convert_from_agi(nodes$id)
+
+
+degrees <- sort(setNames(nodes$degree, nodes$entrez), decreasing = T)
+
+gse <- gseGO(geneList=degrees, 
+            ont ="BP", 
+            minGSSize = 3, 
+            maxGSSize = 800, nPerm =1000,
+            pvalueCutoff = 0.05, 
+            verbose = TRUE, scoreType = "pos",
+            OrgDb = org.At.tair.db::org.At.tair.db, 
+            pAdjustMethod = "BH")
+res <- gse@result
+
+```
+
+
+
+
+
+
 
 ### Computing prediction error
 
 ```{r}
 get_MSE(grn_bRF, method = "bRF")
+get_MSE(grn_bRF, method = "bRF")
 ```
 
 The error in predicting the target gene expression is however lower in LASSO-D3S.
 
+
+### Idées de choses à explorer comme résultats
+
++ Gènes les plus connectés : plein de HHO
++ Position des gènes N dans le réseau : NIR et G6PG ont des régulateurs intéressants
++ GSEA : ontologies N, root, 
++ Clustering topologique
++ distribution des degrés
++ Validation précision + test très significatif sur les réseaux permutés
+
+Construire une histoire cohérente en si peu de temps? ...
+
+Pas de NRT
+
+
+
+```{r}
+load('../rdata/CO2_degs_expression.rdata')
+genes <- CO2_responsive_genes$genes
+tfs <- CO2_responsive_genes$tfs
+counts_all_N <- CO2_responsive_genes$counts_all_N
+
+
+importances <- bRF_inference(counts_all_N, genes, tfs, alpha = 0.5, prior_strength = 2, 
+                             pwm_occurrence = pwm_occurrence, nCores = 50)
+
+grn_bRF_all <- bRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
+mean(grn_bRF_all$pwm)
+
+evaluate_networks(list("bRF_0.5" = grn_bRF, "bRF_0.5_all" = grn_bRF_all), input_genes = genes, input_tfs = tfs)
+
+nodes_all <- rank_nodes(graph_from_data_frame(grn_bRF_all, directed = T), 
+                     regulators_per_organism[["Arabidopsis thaliana"]], 
+                     gene_annotations$`Arabidopsis thaliana`)
+
+head(nodes[order(nodes$degree_out, decreasing = T),], n=30)
+head(nodes[order(nodes$degree_in, decreasing = T),], n=30)
+head(nodes[order(nodes$degree, decreasing = T),], n=30)
+
+
+
+network_all <- igraph::graph_from_data_frame(grn_bRF_all, directed = TRUE)
+
+DIANE::draw_network_degrees(nodes_all, network_all)
+describe_node(network_all, "")
+# regulators of G6PD3
+get_gene_information(describe_node(network_all, "AT1G24280")$regulators, organism = "Arabidopsis thaliana")
+
+# GRXS13
+get_gene_information(describe_node(network_all, "AT1G03850")$regulators, organism = "Arabidopsis thaliana")
+
+# NRT2.1
+get_gene_information(describe_node(network_all, "AT1G08090")$regulators, organism = "Arabidopsis thaliana")
+
+# regulators of NIR
+get_gene_information(describe_node(network_all, "AT2G15620")$regulators, organism = "Arabidopsis thaliana")
+
+# targets of LBD41
+get_gene_information(describe_node(network_all, "AT3G02550")$targets, organism = "Arabidopsis thaliana")
+
+# targets of HHO3
+get_gene_information(describe_node(network_all, "AT1G25550")$targets, organism = "Arabidopsis thaliana")
+```

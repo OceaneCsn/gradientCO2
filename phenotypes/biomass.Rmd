@@ -30,7 +30,7 @@ library(jsonlite)
 data <- read.csv("../data/OC_08_dry_biomass.csv", sep=';')
 annot <- read.csv("../data/OC_08_annotation.csv", sep=';')
 
-DF=4
+DF=2
 
 data <- data %>%
   filter(!str_detect(TubeVide, "Date")) %>%
@@ -40,7 +40,7 @@ data <- data %>%
   select(-c(Tissue, RNA)) %>%
   filter(Dry_mass_mg >0)
 
-data %>%
+fig <- data %>%
   ggplot(aes(x=CO2, y=Dry_mass_mg, color=N, fill=N))+
   geom_smooth(method = "lm", se = T, size = 1, alpha=0.3,
               formula = y ~ ns(x, df=DF))+
@@ -55,6 +55,8 @@ data %>%
   ggtitle("Dry biomass of plants under CO2 gradient and 2 types of N nutrition")+
   xlim(c(390, 910)) +
   labs(subtitle = "Spline interpolation, N=11 or 12 per CO2*N condition")
+
+ggexport(fig, filename = "../results/biomass.pdf", width = 8)
 ```
 
 # Régression par splines
@@ -63,6 +65,12 @@ data %>%
 data %>%
   lm(formula=Dry_mass_mg ~ ns(CO2, df=DF)*N)%>%
   summary()
+library(texreg)
+lm_biomass <- data %>%
+  rename(N_nutrition = N) %>%
+  lm(formula=Dry_mass_mg ~ ns(CO2, df=DF)*N_nutrition)
+
+
 ```
 
 

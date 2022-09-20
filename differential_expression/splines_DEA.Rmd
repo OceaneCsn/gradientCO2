@@ -1,0 +1,392 @@
+---
+title: "Analyse transcriptomique sous gradient de CO2"
+author: "Océane"
+output: 
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+    df_print: paged
+---
+
+
+```{r setup, include=FALSE, warning=FALSE, error=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DIANE)
+library(tidyverse)
+library(corrplot)
+library(patchwork)
+library(splines)
+library(edgeR)
+library(ggpubr)
+load('../rdata/expression_data_no_mismatch.rdata')
+```
+
+# Contexte
+
+Avec la variable continue du CO2 élevé, on se dit que les expressions différentielles deux à deux auront moins d'intérêt que des analyses par splines.
+L'objectif est donc de déterminer les profils des gènes différentiellement exprimés sur la base d'une interpolation polynomiale liée à l'élévation du CO2.
+
+## Import et normalisation des données 
+
+
+Données après correction des mix-up samples :
+
+```{r import, fig.width=15, fig.height=15}
+corrplot(cor(data), method = 'color')
+conditions <- str_split_fixed(colnames(data), '_', 2)[,1]
+tcc <- normalize(data, norm_method = 'tmm', conditions = conditions, iteration = FALSE)
+tcc <- filter_low_counts(tcc, 10*length(conditions))
+normalized_counts <- TCC::getNormalizedData(tcc)
+draw_distributions(data) /
+draw_distributions(normalized_counts)
+
+draw_PCA(normalized_counts)
+```
+
+# Differential expression analysis
+
+```{r}
+DF <- 2
+FDR <- 0.005
+
+CO2 <- as.numeric(str_split_fixed(conditions, '\\.', 2)[,1])
+CO2_spline <- ns(CO2, df = DF)
+
+N <- str_split_fixed(conditions, '\\.', 2)[,2]
+design <- model.matrix(~CO2_spline*N)
+
+dge <- edgeR::DGEList(
+    counts = normalized_counts,
+    norm.factors = rep(1,ncol(normalized_counts)))
+  
+y <- edgeR::estimateDisp(dge, design)
+fit <- edgeR::glmQLFit(y, design)
+
+CO2_coeffs <- 2:(1+DF)
+N_coeff <- DF+2
+CO2_N_coeffs <- (DF+3):ncol(design)
+
+annot <- gene_annotations$`Arabidopsis thaliana`
+```
+
+## CO2 DEGs
+
+
+
+```{r}
+
+
+CO2_dea <- edgeR::glmQLFTest(fit, coef = CO2_coeffs)$table %>%
+  filter(PValue < FDR)
+
+CO2_dea[,c("label", "description")] <- 
+  annot[rownames(CO2_dea), c("label", "description") ]
+
+CO2_dea[c("label", "description", "PValue", "logCPM", "logFC.CO2_spline1", "logFC.CO2_spline2")] %>%
+  rename(CO2_spline1 = logFC.CO2_spline1, 
+         CO2_spline2 = logFC.CO2_spline2) %>%
+DT::datatable(
+              options = list(scrollX = TRUE)) %>%
+  DT::formatSignif(columns = c("PValue", "logCPM",  "CO2_spline1",  "CO2_spline2"),
+                   digits = 4)%>%
+  DT::formatStyle(
+          columns = c("CO2_spline1"),
+          target = c("cell", "row"),
+          color = DT::styleInterval(cuts = c( 0 ), 
+                                              values = c("#FF000035", "#72F02466")))%>%
+  DT::formatStyle(
+          columns = c("CO2_spline2"),
+          target = c("cell", "row"),
+          color = DT::styleInterval(cuts = c( 0 ), 
+                                              values = c("#FF000035", "#72F02466")))
+
+DEGs_CO2 <- rownames(CO2_dea)
+```
+
+
+## N DEGs
+
+
+```{r}
+N_dea <- edgeR::glmQLFTest(fit, coef = N_coeff)$table %>%
+  filter(PValue < FDR)
+
+N_dea[,c("label", "description")] <- 
+  annot[rownames(N_dea), c("label", "description") ]
+
+
+DT::datatable(N_dea[c("label", "description", "PValue", "logCPM", "logFC")], 
+              options = list(scrollX = TRUE)) %>%
+  DT::formatSignif(columns = c("PValue", "logCPM",  "logFC"),
+                   digits = 4)%>%
+  DT::formatStyle(
+          columns = c("logFC"),
+          target = c("cell", "row"),
+          color = DT::styleInterval(cuts = c( 0 ), 
+                                              values = c("#FF000035", "#72F02466")))
+
+DEGs_N <- rownames(N_dea)
+```
+
+## CO2*N DEGs
+
+
+
+```{r}
+
+CO2_N_dea <- edgeR::glmQLFTest(fit, coef = CO2_N_coeffs)$table %>%
+  filter(PValue < FDR)
+
+CO2_N_dea[,c("label", "description")] <- 
+  annot[rownames(CO2_N_dea), c("label", "description") ]
+
+CO2_N_dea[c("label", "description", "PValue", "logCPM", "logFC.CO2_spline1.NMix", "logFC.CO2_spline2.NMix")] %>%
+  rename(CO2_spline1.NMix=logFC.CO2_spline1.NMix , CO2_spline2.NMix=logFC.CO2_spline2.NMix) %>%
+DT::datatable( 
+              options = list(scrollX = TRUE)) %>%
+  DT::formatSignif(columns = c("PValue", "logCPM",  "CO2_spline1.NMix", "CO2_spline2.NMix"),
+                   digits = 4)%>%
+  DT::formatStyle(
+          columns = c("CO2_spline1.NMix"),
+          target = c("cell", "row"),
+          color = DT::styleInterval(cuts = c( 0 ), 
+                                              values = c("#FF000035", "#72F02466")))%>%
+  DT::formatStyle(
+          columns = c("CO2_spline2.NMix"),
+          target = c("cell", "row"),
+          color = DT::styleInterval(cuts = c( 0 ), 
+                                              values = c("#FF000035", "#72F02466")))
+
+DEGs_CO2_N <- rownames(CO2_N_dea)
+```
+
+
+## Venn diagram of the 3 types of DEGs
+
+```{r}
+draw_venn(list("DEGs_CO2"=DEGs_CO2, "DEGs_N"=DEGs_N, "DEGs_CO2_N"=DEGs_CO2_N))
+```
+
+
+# Profiles of Nitrate genes
+
+```{r, fig.width=16, fig.height=15}
+
+ngenes <- read.table('../data/Ngenes.csv', h=T, sep = ';')
+
+genes <- sample(DEGs_CO2, 5)
+
+
+draw_genes <- function(genes, normalized_counts, ncol=NULL, labels = FALSE, annotation = F){
+  
+  genes <- intersect(genes, rownames(normalized_counts))
+  data <- reshape2::melt(normalized_counts[genes,] , 
+               quiet =T, value.name = "Expression") %>%
+  rename(gene = Var1, condition = Var2) %>%
+  separate(condition, into = c("CO2", "Nutrition", "rep")) %>%
+  mutate(CO2 = as.numeric(CO2)) 
+  if(labels) {
+    if(annotation)
+      data$label <- annot[match(data$gene, rownames(annot)), "label"]
+    else
+      data$label <- ngenes[match(data$gene, ngenes$AGI), "Gene"]
+    data %>%
+    ggplot(aes(x=CO2, y=Expression, color=Nutrition, fill = Nutrition)) +
+    geom_point() + geom_smooth(method = "lm", se = TRUE,
+                  size = 1, alpha=0.1,
+                  formula = y ~ splines::ns(x, df = DF)) +
+    facet_wrap(~label, scales = 'free', ncol = ncol) + 
+      theme_pubr() + scale_fill_brewer(palette="Accent")+ 
+      scale_color_brewer(palette="Accent")+
+      labs(title = "Normalized gene expression in CO2 gradient experiment", 
+           subtitle = paste("Splines interpolation with DF=", DF))
+  }
+  else{
+    data$label <- ngenes[match(data$gene, ngenes$AGI), "Gene"]
+    data %>%
+    ggplot(aes(x=CO2, y=Expression, color=Nutrition, fill = Nutrition)) +
+    geom_point() + geom_smooth(method = "lm", se = TRUE,
+                  size = 1, alpha=0.1,
+                  formula = y ~ splines::ns(x, df = DF)) +
+    facet_wrap(~gene, scales = 'free', ncol = ncol) + 
+      theme_pubr() + scale_fill_brewer(palette="Accent")+ 
+      scale_color_brewer(palette="Accent")+
+      labs(title = "Normalized gene expression in CO2 gradient experiment", 
+           subtitle = paste("Splines interpolation with DF=", DF))
+  }
+}
+
+
+draw_genes(ngenes[ngenes$Role == "nitrate uptake transport and metabolism","AGI"], normalized_counts, ncol = 4, labels = T)
+draw_genes(ngenes[ngenes$Role == "negative regulator","AGI"], normalized_counts, ncol = 4, labels = T)
+draw_genes(c(ngenes[ngenes$Role == "positive regulator","AGI"], "AT4G24020"), normalized_counts, ncol = 3, labels = T)/
+draw_genes(ngenes[ngenes$Role == "signalling","AGI"], normalized_counts, ncol = 3, labels = T)
+
+
+load("../../Combi/Results/network_N_CO2.RData")
+candidates <- c(network_N_CO2$ranking$id[1:6], "AT2G21900","AT3G46600", network_N_CO2$ranking$id[8:13])
+draw_genes(candidates, normalized_counts, ncol = 3, labels = T, annotation  = T)
+
+```
+
+
+# Ontology enrichment of DEGs
+
+## CO2 DEGs
+
+```{r, fig.width=12, fig.height=8}
+bg <- convert_from_agi(rownames(normalized_counts))
+entrez <- convert_from_agi(DEGs_CO2)
+go_CO2 <- enrich_go(entrez, bg)
+# DT::datatable(go_CO2,
+#                   options = list(scrollX = TRUE)) 
+draw_enrich_go(go_CO2)
+```
+
+## Nitrate DEGs
+
+
+```{r, fig.width=12, fig.height=8}
+entrez <- convert_from_agi(DEGs_N)
+go_N <- enrich_go(entrez, bg)
+# DT::datatable(go_N,
+#                   options = list(scrollX = TRUE))
+draw_enrich_go(go_N)
+```
+
+
+## CO2*N DEGs
+
+```{r, fig.width=12, fig.height=18}
+entrez <- convert_from_agi(DEGs_CO2_N)
+go_CO2_N <- enrich_go(entrez, bg)
+# DT::datatable(go_CO2_N,
+#                   options = list(scrollX = TRUE))
+draw_enrich_go(go_CO2)
+```
+
+# Clustering of DEGs
+
+```{r, fig.width=10, fig.height=10, message=FALSE, warning=FALSE}
+draw_clusters <- function(normalized_counts, genes, clustering, ncol=NULL){
+  reshape2::melt(normalized_counts[genes,], 
+               quiet =T, value.name = "Expression") %>%
+  rename(gene = Var1, condition = Var2) %>%
+  separate(condition, into = c("CO2", "Nutrition", "rep")) %>%
+  mutate(CO2 = as.numeric(CO2),
+         cluster = clustering$membership[gene]) %>%
+  group_by(gene) %>%
+  mutate(Expression= (Expression-mean(Expression))/sd(Expression)) %>%
+    group_by(cluster, CO2, Nutrition, rep) %>%
+    mutate(N_genes = n()) %>%
+    unite(Cluster_label, cluster, N_genes, sep = ', N=') %>%
+  ggplot(aes(x=CO2, y=Expression, color=Nutrition, fill = Nutrition)) +
+  geom_point(alpha=0.01)+geom_smooth(method = "lm", se = TRUE,
+                size = 1, alpha=0.1,
+                formula = y ~ splines::ns(x, df = DF)) +
+  facet_wrap(~Cluster_label, scales = 'free', ncol = ncol) + 
+    theme_pubr() +scale_fill_brewer(palette="Accent")+ 
+    scale_color_brewer(palette="Accent")+
+    labs(title = "Normalized clusters expression in CO2 gradient experiment", 
+         subtitle = paste("Splines interpolation with DF=", DF))
+}
+
+draw_clusters(normalized_counts, DEGs_CO2, 
+              run_coseq(conds = conditions, data = normalized_counts, 
+                        genes = DEGs_CO2, K = 6, transfo = "arcsin", 
+                        model = "Normal", seed = 123)) + ggtitle("C02 DEGs : clusters profiles")
+
+
+draw_clusters(normalized_counts, DEGs_N, 
+              run_coseq(conds = conditions, data = normalized_counts, 
+                        genes = DEGs_N, K = 4, transfo = "arcsin", 
+                        model = "Normal", seed = 123)) + ggtitle("N DEGs : clusters profiles")
+
+draw_clusters(normalized_counts, DEGs_CO2_N, 
+              run_coseq(conds = conditions, data = normalized_counts, 
+                        genes = DEGs_CO2_N, K = 9, transfo = "arcsin", 
+                        model = "Normal", seed = 123)) + ggtitle("N*CO2 DEGs : clusters profiles")
+```
+
+
+
+
+# PCA figure
+
+
+```{r, fig.width=15}
+library(ggrepel)
+
+draw_PCA <- function(data) {
+  # PCA computation
+  data <- log(data + 2)
+  data <- data / rowMeans(data)
+  acp <-
+    ade4::dudi.pca(
+      data,
+      center = TRUE,
+      scale = TRUE,
+      scannf = FALSE,
+      nf = 4
+    )
+  
+  acp$co$condition = stringr::str_split_fixed(rownames(acp$co), '_', 2)[, 1]
+  acp$co$replicate = stringr::str_split_fixed(rownames(acp$co), '_', 2)[, 2]
+  
+  scree <-
+    data.frame(
+      component = seq(1:length(acp$eig)),
+      eigen.values = acp$eig,
+      explained.variance = round(acp$eig / sum(acp$eig) *
+                                   100, 2)
+    )
+  scree <- scree[1:min(nrow(scree), 4),]
+  
+  # Plots
+  g1_2 <-
+    ggplot2::ggplot(data = acp$co,
+           ggplot2::aes(
+             x = Comp1,
+             y = Comp2,
+             color = condition,
+             label = condition,
+             shape = replicate
+           )) + geom_text_repel(
+             color = "black",
+             size = 6,
+             alpha = 0.5,
+             nudge_x = 0.07,
+             nudge_y = 0.07
+           ) +theme_pubr()+
+    ggplot2::geom_point(size = 6, alpha = 0.7) + ggplot2::xlim(-1, 1) +
+    ggplot2::ylim(-1, 1) + ggplot2::geom_vline(xintercept = 0) + ggplot2::geom_hline(yintercept = 0) +
+    ggplot2::theme(legend.position = "none", title = ggplot2::element_text(size = 18, face = "bold")) +
+    ggplot2::ggtitle("Principal components 1 and 2") +
+    ggplot2::xlab(paste("x-axis : cor. to Comp1 ", scree[1, "explained.variance"], "%")) +
+    ggplot2::ylab(paste("y-axis : cor. to Comp2 ", scree[2, "explained.variance"], "%"))
+
+  
+  screeplot <- ggplot2::ggplot(scree,
+                      ggplot2::aes(
+                        y = explained.variance,
+                        x = component,
+                        fill = component,
+                        label = paste(round(explained.variance, 1), '%')
+                      )) +theme_pubr()+
+    ggplot2::geom_bar(stat = "identity") + ggplot2::geom_text(size = 6,
+                                            vjust = 1.6,
+                                            color = "white") +
+    ggplot2::ggtitle("PCA Screeplot") + ggplot2::theme(legend.position = "none",
+                                     title = ggplot2::element_text(size = 18, face = "bold") )
+  
+  
+  g1_2 + screeplot + plot_layout(widths = c(2.5,1))
+}
+ggexport(draw_PCA(normalized_counts), filename = "../results/pca_gradient.pdf", width = 15, height = 10)
+
+
+```
+
+
+

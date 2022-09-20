@@ -19,8 +19,8 @@ library(tictoc)
 library(GENIE3)
 library(igraph)
 
-bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
-                          prior_strength = 5,
+bRF_inference <- function(counts, genes, tfs, alpha=0.5, scale = FALSE,
+                          prior_strength = 2,
                           pwm_occurrence, nTrees=500, importance="%IncMSE",
                           nCores = ifelse(is.na(detectCores()),1,
                                           max(detectCores() - 1, 1))){
@@ -31,8 +31,7 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
   # z-score if scaling is required
   if(scale){
     counts <- (counts - rowMeans(counts))/genefilter::rowSds(counts)
-   }
-  
+  }
   
   x <- t(counts[tfs,])
   
@@ -42,7 +41,7 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
   
   # the regressions for each genes are done in parallel
   registerDoParallel(cores = nCores)
-  message(paste("\nCustom iRafNet Using", foreach::getDoParWorkers(), "cores."))
+  message(paste("\nbRF Using", foreach::getDoParWorkers(), "cores."))
   "%dopar%" <- foreach::"%dopar%"
   tic()
   suppressPackageStartupMessages(result.reg <-
@@ -64,7 +63,10 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                                                                                       sw=weights)
                                                       
                                                       im <- rf_weighted$importance[,importance]
-                                                      
+                                                      # get relative increase in MSE instead of absolute increase
+                                                      if(importance == "%IncMSE"){
+                                                        im <- im/mean(rf_weighted$mse)
+                                                      }
                                                       c(setNames(0, target), setNames(im, names(im)))[tfs]
                                                     }))
   attr(result.reg, "rng") <- NULL # It contains the whole sequence of RNG seeds
