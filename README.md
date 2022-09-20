@@ -1,14 +1,10 @@
 # Context
 
+We generated a transcriptomic dataset of the root response to gradually increasing CO2 concentrations in *Arabidopsis thaliana*. In addition to allowing a better resolution for GRN inference, measuring gene expression under a full range of CO2 concentrations has the potential to shed light on the dynamic of CO$_2$ response : is gene expression linearly reprogrammed as CO2 rises, or are there step functions and abrupt changes at specific CO$_2$ levels? Furthermore, we made the decision to investigate different types of N sources for the plant : nitrate and ammonium nitrate nutrition. This was motivated by the observation in the literature that ammonium nutrition elicits different phenotypic responses than nitrate nutrition in the face of CO$_2$ elevation. 
 
-Experiment to quantify the effect of increasing CO$_2$ levels on *Arabidopsis thaliana*'s genomics and phenotypes, under two type of N nutrition. Carried out in the Ecotron in november 2021 by A. and O..
 
-For 5 CO$_2$ levels, (400, 525, 650, 775, 900 ppm) and 2 N nutrition (KNO3 and mix NH4KNO3, both resulting in 0.5mM N availability), roots were collected and flash frozen, and leaves were partly flash frozen and partly dried for biomass and mineral status analyses.
+Arabidopsis Columbia ecotypes were hydroponically grown in 5 different controlled chambers, differing only in their CO$_2$ concentrations : 400, 525, 650, 775 and 900ppm. Inside a chamber, plants were separated in two groups, one receiving nitrate (KNO$_3$) and one receiving an ammonium nitrate (KNO$_3$-NH$_4$) mix, both resulting in a N concentration equal to 0.5 mM. Experiment carried out in the Ecotron in november 2021.
 
-Samples of roots ans shoots were samples by A. and L., milled by A. and O., RNAs extracted by A., aliquoted by A. 
-RNA-Seq was performed by Genoscreen.
-
-Samples of shoots to be dried were collected by O. and J.
 
 # Phénotypes analyses
 
@@ -16,26 +12,12 @@ Increase in biomass as CO$_2$ increases, even more marked in mix than KNO3. See 
 
 Decrease in N content as CO$_2$ increases, even more marked in mix than KNO3. See `phenotypes/N-C.html` for graph and splines analyses.
 
-
 Correlation analyses between N content and biomass are also done, and show no significant association for comparable N nutrition and CO2 condition.
 
 # Transcriptomics analyses
 
-## Bioinformatics
+A global differential expression analysis was carried out using splines modelling and edgeR, and the a GRN of the root response to a CO2 gradient was inferred using the integrative inference method : [bRF](https://github.com/OceaneCsn/integrative_GRN_N_induction). See `grn_inference/` folder for expression data preparation, TF binding sites data preparation, and inference scripts. The functions for bRF and its C++ dependencies and in `inference_functions/`.
 
-Samples were processed on the plasticity server using the script `bioinformatics/batch_process.py` (open it for details and arguments used for the quality and mapping jobs). Quantification was done using `bioinformatics/quantif.sh` (open it to see the arguments passed to htseq-count).
+# Results
 
-High quality samples, high quality alignment rate, high fraction of reads quantified.
-
-
-## Sample mix-ups are highly highly likely
-
-Using PCA, corplot (`bioinformatics/format_raw_expression.R`) and NRT2.1 expression, I saw that replicates were not homogenous and that some N and CO2 conditions had been switched inadvertantly. I manually re-annotated the samples to have clean PCA, corplot showing maximum correlation between replicates, and coherent NRT2.1 expression profiles (high expression in KNO3, low in Mix). After discussion with A., we chose to use my corrected annotation as this is the most likely and coherent annotation (even though it is upsetting that we'll never be sure of the true annotation).
-
-> Our RNA extraction must be clean, as A. made sucessful rt-QPCR with coherent profiles, so the mix-up must have been with the aliquots, or during the processing by Genoscreen...
-
-
-## Statistical analyses
-
-Splines analyses are envisioned to study the joint effect of CO2 and N nutrition on differential expression.
-Moanin could also be used as the design is much more suited.
+Results in the form of figures for phentotypic analyses and GRN inference are stored in the folder `results/`.
