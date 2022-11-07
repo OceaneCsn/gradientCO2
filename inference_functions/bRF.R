@@ -1,6 +1,5 @@
 source('../inference_functions/iRafNet_utils.R')
 
-
 ######################## imports for parallel version
 library(doParallel)
 library(parallel)
@@ -8,10 +7,9 @@ library(foreach)
 library(doRNG)
 
 ###################### imports to use C++ code
-dyn.load("../inference_functions/Cpp_dependencies/rfutils.so")
-dyn.load("../inference_functions/Cpp_dependencies/regTree.so")
-dyn.load("../inference_functions/Cpp_dependencies/regrf.so")
-dyn.load("../inference_functions/Cpp_dependencies/regrf_mse.so")
+dyn.load("inference_functions/Cpp_dependencies/rfutils.so")
+dyn.load("inference_functions/Cpp_dependencies/regTree.so")
+dyn.load("inference_functions/Cpp_dependencies/regrf_mse.so")
 
 
 ########## other imports
@@ -19,7 +17,23 @@ library(tictoc)
 library(GENIE3)
 library(igraph)
 
-bRF_inference <- function(counts, genes, tfs, alpha=0.5, scale = FALSE,
+#' bRF GRN inference
+#'
+#' @param counts expression matrix with gene IDs as rownames and conditions in columns
+#' @param genes list of genes used as inputs for GRN inference
+#' @param tfs list of TFs used as predictors for GRN inference
+#' @param alpha integration strength, value should be between 0 and 1.
+#' @param scale weather or not to scale expression data to z-scores.
+#' @param prior_strength value of k in the link function
+#' @param pwm_occurrence matrix of prior data Pi containing TFBS scores between
+#' TFs and genes
+#' @param nTrees Number of trees in Random Forests
+#' @param importance Importance metric in Random Forests.
+#' MDA ("%IncMSE") is the default value. MDI can be used via "IncNodePurity".
+#' @param nCores Number of cores for multithreading. (Not supported on Windows)
+#'
+#' @return The weighted list of regulatory interactions between genes and TFs
+bRF_inference <- function(counts, genes, tfs, alpha=0.25, scale = FALSE,
                           prior_strength = 2,
                           pwm_occurrence, nTrees=500, importance="%IncMSE",
                           nCores = ifelse(is.na(detectCores()),1,
@@ -41,7 +55,7 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.5, scale = FALSE,
   
   # the regressions for each genes are done in parallel
   registerDoParallel(cores = nCores)
-  message(paste("\nbRF Using", foreach::getDoParWorkers(), "cores."))
+  message(paste("\nbRF is running using", foreach::getDoParWorkers(), "cores."))
   "%dopar%" <- foreach::"%dopar%"
   tic()
   suppressPackageStartupMessages(result.reg <-
@@ -80,17 +94,23 @@ bRF_inference <- function(counts, genes, tfs, alpha=0.5, scale = FALSE,
 
 
 
+#' Threshold bRF GRN to a desired density
+#'
+#' @param mat result of bRF_inference function
+#' @param density desired network density
+#' @param pwm_occurrence matrix of prior data Pi containing TFBS scores between
+#' TFs and genes
+#' @param genes list of genes used as inputs for GRN inference
+#' @param tfs list of TFs used as predictors for GRN inference
+#'
+#' @return dataframe of oriented edges, and their prior value in pwm_occurrence
 bRF_network <- function(mat, density, pwm_occurrence, genes, tfs){
-  # DIANE's function network_thresholding
-  
   # getting the number of genes for a desired density
   nEdges = round(density * (length(genes) - 1) * length(tfs), 0)
   
   # getting the ranked list of edges
   links <- getLinkList(mat, reportMax = nEdges)
   network <- graph_from_data_frame(links, directed = T)
-  
-  
   edges <- as_long_data_frame(network)[c(4,5)]
   colnames(edges) <- c('from', 'to')
   

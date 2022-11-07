@@ -166,7 +166,7 @@ ranking <- nodes[order(nodes$degree_out, decreasing = T),
                  c("label", "gene_type", "degree", "degree_in", 
                    "degree_out")]
 
-N_response <- ifelse(ranking$label %in% c("HHO2", "HHO3", "HRS1", "CDF3", "BZIP3",
+N_response <- ifelse(ranking$label %in% c("HHO2", "HHO3", "HRS1", "CDF3", "BZIP3","UIF1","HB6",
                                "CCA1", "NLP7", "NLP6", "BT1", "BT2", "RAV1", "DIV1"), "#6BAED6", "grey95")[1:40]
 
 my_table_theme <- ttheme_minimal(core=list(bg_params = list(fill = N_response, col=NA, alpha = 0.6)))
@@ -208,7 +208,7 @@ ggexport(adj, filename = "../results/Ngenes_adjacency_allregs.pdf", width = 6, h
 # Getting targets and regulators of some genes
 
 ```{r}
-
+network <- igraph::graph_from_data_frame(grn_bRF, directed = T)
 # NRT2.2
 get_gene_information(describe_node(network, "AT1G08100")$regulators, organism = "Arabidopsis thaliana")
 
@@ -249,7 +249,7 @@ get_gene_information(describe_node(network, "AT4G24020")$targets, organism = "Ar
 get_gene_information(describe_node(network, "AT5G43350")$regulators, organism = "Arabidopsis thaliana")
 
 # PHHT1.2
-get_gene_information(describe_node(network, "AT2G31955")$regulators, organism = "Arabidopsis thaliana")
+get_gene_information(describe_node(network, "AT3G60530")$target, organism = "Arabidopsis thaliana")
 
 ```
 
@@ -318,6 +318,22 @@ fig_N <- (draw_genes(regs, counts, annotation = T, labels = T, ncol = 4) + ggtit
 
 ggexport(fig_N, filename = "../results/expression_adj_N_genes.pdf", width = 12, height = 14)
 ggexport(draw_genes(targets, counts, annotation = T, labels = T), filename = "../results/expression_N_target.pdf", width = 10)
+
+# candidates for GWAs
+
+Fe <- c("AT5G21070", "AT5G21060", "AT5G21080")
+N <- c("AT3G60530", "AT3G60520")
+kinases <- c("AT1G66880", "AT1G66910", "AT1G66900", "AT1G66890")
+Zn <- c('AT4G17330', 'AT4G17340')
+draw_genes(c("AT5G21070","AT3G60530", 'AT4G17340'), normalized_counts, annotation = T, labels = T)
+draw_genes(kinases, normalized_counts, annotation = T, labels = T)
+draw_genes(c("AT3G45650", "AT5G21070"), normalized_counts, annotation = T, labels = T)
+	 
+intersect(genes, "AT3G60530" )
+DF=2
+
+
+draw_genes(Zn, normalized_counts, annotation = T, labels = T)
 
 
 
