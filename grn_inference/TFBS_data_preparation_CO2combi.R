@@ -31,5 +31,6 @@ for(tf in tfs){
 save(pwm_occurrence, file = "rdata/pwm_occurrences_CO2combi_response.rdata")
 
 
-
-
+library(AraNetBench)
+validated_edges <- validated_edges[validated_edges$from %in% genes & validated_edges$to %in% genes,]
+save(validated_edges, file = "rdata/connectf_CO2combi_genes.rdata")

@@ -14,7 +14,7 @@ library(gridExtra)
 # custom scripts for GRN inference
 source('../inference_functions/bRF.R')
 source('../inference_functions/LASSO-D3S.R')
-source('../inference_functions/evaluateNetwork.R')
+source('../inference_functions/evaluateNetwork_combi.R')
 source('../inference_functions/MSE.R')
 source('../grn_inference/rank_nodes.R')
 ```
@@ -47,7 +47,7 @@ counts <- CO2_responsive_genes$counts
 
 
 ```{r}
-load("../rdata/pwm_occurrences_CO2_response.rdata")
+load("../rdata/pwm_occurrences_CO2combi_response.rdata")
 dim(pwm_occurrence)
 ```
 
@@ -60,29 +60,27 @@ These values, especially $\alpha$; are derived from the manuscript presenting bR
 
 ```{r}
 
-get_alpha_exploration <- function(){
-  networks <- list()
-  for(alpha in seq(0, 1, by = 0.1)){
-  
-    for(rep in 1:3){
-      importances <- bRF_inference(counts, genes, tfs, alpha = alpha,
-                                 prior_strength = 1,
-                                 pwm_occurrence = pwm_occurrence, nCores = 50)
-  
-      for(density in c(0.001, 0.0025, 0.005, 0.01)){
-  
-      grn_bRF <- bRF_network(importances, density =density, pwm_occurrence, genes, tfs)
-      networks[[paste0(rep,'_', alpha, '_', density)]] <- grn_bRF
-    }
+networks <- list()
+for(alpha in seq(0, 1, by = 0.1)){
+
+  for(rep in 1:4){
+    importances <- bRF_inference(counts, genes, tfs, alpha = alpha,
+                               prior_strength = 1, nTrees = 6000,
+                               pwm_occurrence = pwm_occurrence, nCores = 50)
+
+    for(density in c(0.0025, 0.005, 0.01, 0.02)){
+
+    grn_bRF <- bRF_network(importances, density =density, pwm_occurrence, genes, tfs)
+    networks[[paste0(rep,'_', alpha, '_', density)]] <- grn_bRF
     }
   }
 }
+get_nEdges(0.005, length(genes), length(tfs))
 
-# networks <- get_alpha_exploration()
-# networks <- networks[str_detect(names(networks), "0.005")]
-# save(networks, file = "parameter_exploration.rdata")
+#networks <- networks[str_detect(names(networks), "0.005")]
+#save(networks, file = "parameter_exploration.rdata")
 
-load("parameter_exploration.rdata")
+#load("parameter_exploration_CO2_combi.rdata")
 edges_num <- lapply(networks, function(df) df[sapply(df, is.numeric)])
 d <- data.frame(name = names(unlist(lapply(edges_num, FUN = nrow))),
                  pwm = unlist(lapply(edges_num, FUN = colMeans)))
@@ -90,16 +88,19 @@ d <- data.frame(name = names(unlist(lapply(edges_num, FUN = nrow))),
 
 ### Validating the GRNs against ConnecTF
 
-```{r}
+
+Etant donné les résultats du benchmark contre connecTF, plusieurs observations :
+
++ On a un optimum pour alpha, ce qui n'était pas le cas avec les deux autres jeux de données testés
+
++ On a beaucoup de variabilité entre les réplicats, en partie corrigé par l'augmentation du nombre d'arbres.
+
+```{r, fig.width=10}
 connecTF_validation <- evaluate_networks(networks, 
-                  input_genes = genes, input_tfs = tfs, nCores = 40); connecTF_validation
+                  input_genes = genes, input_tfs = tfs, nCores = 40); 
 
-
-target_validation <- evaluate_networks(networks, validation = c("TARGET"),
-                  input_genes = genes, input_tfs = tfs, nCores = 40); connecTF_validation
 fig <- d%>%
   separate(col = name, into = c("rep", "alpha", "density"), sep = '_') %>%
-  filter(density==0.005) %>%
   mutate(density = str_remove(density,"\\.pwm")) %>%
   mutate(alpha = as.numeric(alpha)) %>%
   ggplot(aes(x=alpha, y=pwm, col = density, fill = density)) +geom_smooth() + 
@@ -108,15 +109,13 @@ fig <- d%>%
   scale_fill_brewer(palette = "Set2") + xlab(expression(alpha))+
 connecTF_validation%>%
   separate(col = network_name, into = c("rep", "alpha", "density"), sep = '_') %>%
-  filter(density==0.005) %>%
     mutate(alpha = as.numeric(alpha)) %>%
   ggplot(aes(x=alpha, y=precision, col = density, fill = density)) +
-  geom_point() + theme_pubr() + geom_smooth() + 
+  geom_point() + theme_pubr() + geom_smooth(alpha=0.1) + 
   scale_color_brewer(palette = "Set2")+
   scale_fill_brewer(palette = "Set2")+ xlab(expression(alpha))+
 connecTF_validation%>%
   separate(col = network_name, into = c("rep", "alpha", "density"), sep = '_') %>%
-  filter(density==0.005) %>%
     mutate(alpha = as.numeric(alpha)) %>%
   mutate(density = str_remove(density,"\\.pwm")) %>%
   ggplot(aes(x=alpha, y=recall, col = density, fill = density)) +
@@ -125,6 +124,124 @@ connecTF_validation%>%
   scale_fill_brewer(palette = "Set2")+ xlab(expression(alpha)) +
   plot_annotation(tag_levels = 'a', title = "PWM support, precision and recall for bRF as a function of TFBS contribution")
 
+fig
 
-ggexport(fig, filename = "../results/alpha_exploration_grn.pdf", width = 11, height = 5)
+ggexport(fig, filename = "../results/alpha_exploration_grn_CO2_combi.pdf", width = 15, height = 5)
+```
+
+# Inference of the final GRN
+
+```{r}
+set.seed(131214)
+importances <- bRF_inference(counts, genes, tfs, alpha = 0.5, prior_strength = 1, nTrees = 6000,
+                             pwm_occurrence = pwm_occurrence, nCores = 50)
+
+grn_bRF <- bRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
+# PWM support
+mean(grn_bRF$pwm)
+
+# precision and recall
+evaluate_networks(list("bRF_0.5" = grn_bRF), input_genes = genes, input_tfs = tfs)
+
+nodes <- rank_nodes(graph_from_data_frame(grn_bRF, directed = T), 
+                     regulators_per_organism[["Arabidopsis thaliana"]], 
+                     gene_annotations$`Arabidopsis thaliana`)
+
+head(nodes[order(nodes$degree_out, decreasing = T),], n=30)
+head(nodes[order(nodes$degree_in, decreasing = T),], n=30)
+head(nodes[order(nodes$degree, decreasing = T),], n=30)
+```
+
+
+
+```{r}
+ranking <- nodes[order(nodes$degree_out, decreasing = T),
+                 c("label", "degree", "degree_in", 
+                   "degree_out")]
+
+
+my_table_theme <- ttheme_minimal(core=list(bg_params = list(fill = "lightgrey", col=NA, alpha = 0.2)))
+
+pdf("../results/nodes_ranking_CO2combi.pdf", width = 6, height = 12)
+grid.table(head(ranking, n=40), theme = my_table_theme)
+dev.off()
+```
+
+
+```{r}
+
+network <- igraph::graph_from_data_frame(grn_bRF, directed = T)
+
+# GRXS13
+get_gene_information(describe_node(network, "AT1G03850")$regulators, organism = "Arabidopsis thaliana")
+
+# NRT2.1
+get_gene_information(describe_node(network, "AT1G08090")$regulators, organism = "Arabidopsis thaliana")
+
+# HHO3
+get_gene_information(describe_node(network, "AT1G13300")$targets, organism = "Arabidopsis thaliana")
+
+
+
+targets <- na.omit(nodes[str_detect(nodes$label, paste0(c("GRXS13", "NRT", "G6PD", "NIR", "CNI1", "NIR", "WR3"),
+                                               collapse = '|')),"id"])
+
+
+regs <- na.omit(nodes[str_detect(nodes$label, paste0(c("HHO2", "HHO3", "HRS1", 
+                                                       "MYB15", "MYB85","EDF3",
+                                                       "AGL14","WRKY59","AGL14", "NLP7", 
+                                                       "NLP6", "BT1", "BT2", "WOX11", 
+                                                       "DIV1", "LBD38", "LBD41", "STZ", "ZF2"),
+                                               collapse = '|')),"id"])
+
+
+adj <- grn_bRF[ grn_bRF$to%in% targets,] %>%
+  mutate(from_label = nodes[match(from, nodes$id), "label"],
+         from_to = nodes[match(to, nodes$id), "label"],
+         `PWM` = ifelse(pwm == 1, "In promoter", 
+                        ifelse(pwm==0.5, "Not available", 
+                               "Not in promoter"))) %>%
+  ggplot(aes(x=from_to, y=from_label, fill=PWM))+
+  geom_tile(col="grey") + theme_pubr() +
+  scale_fill_brewer(palette = "Accent") +
+  xlab("Target gene") + ylab("Regulator gene")
+
+
+adj <- grn_bRF[ grn_bRF$from%in% regs,] %>%
+  mutate(from_label = nodes[match(from, nodes$id), "label"],
+         from_to = nodes[match(to, nodes$id), "label"],
+         `PWM` = ifelse(pwm == 1, "In promoter", 
+                        ifelse(pwm==0.5, "Not available", 
+                               "Not in promoter"))) %>%
+  ggplot(aes(x=from_to, y=from_label, fill=PWM))+
+  geom_tile(col="grey") + theme_pubr() +
+  scale_fill_brewer(palette = "Accent") +
+  xlab("Target gene") + ylab("Regulator gene")
+
+```
+# Testing thr GRN precision
+
+```{r}
+precision_perm <- test_precision(grn_bRF, input_genes = genes, input_tfs = tfs, N = 100); precision_perm
+ggexport(precision_perm, filename = "../results/precision_test_gradient_CO2.pdf", width = 7, height = 4)
+```
+```{r}
+set.seed(131214)
+importances <- bRF_inference(counts, genes, tfs, alpha = 0, prior_strength = 1, nTrees = 6000,
+                             pwm_occurrence = pwm_occurrence, nCores = 50)
+
+grn_bRF <- bRF_network(importances, density = 0.005, pwm_occurrence, genes, tfs)
+# PWM support
+mean(grn_bRF$pwm)
+
+# precision and recall
+evaluate_networks(list("bRF_0.5" = grn_bRF), input_genes = genes, input_tfs = tfs)
+
+nodes <- rank_nodes(graph_from_data_frame(grn_bRF, directed = T), 
+                     regulators_per_organism[["Arabidopsis thaliana"]], 
+                     gene_annotations$`Arabidopsis thaliana`)
+
+head(nodes[order(nodes$degree_out, decreasing = T),], n=30)
+head(nodes[order(nodes$degree_in, decreasing = T),], n=30)
+head(nodes[order(nodes$degree, decreasing = T),], n=30)
 ```
